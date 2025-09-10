@@ -380,6 +380,11 @@ with tabs[1]:
         for day in range(1, 5):
             with day_cols[day-1]:
                 st.subheader(f"Day {day}")
+
+                # Add a note about JUNK YARD
+                st.markdown("""
+                <small>Note: If you select JUNK YARD, it must be the only event for that day.</small>
+                """, unsafe_allow_html=True)
                 
                 # If we already have selections for this day, use them as defaults
                 default_indices = []
@@ -410,29 +415,43 @@ with tabs[1]:
         
         # Button to save the 4-day plan
         if st.button("Save 4 Day Plan"):
-            # Validate that each day has exactly 3 events
+            # Validate that each day has exactly 3 events (except for day with JUNK YARD)
             valid_plan = True
+            junk_yard_day = None
+            
+            # Check if JUNK YARD is in any day's plan
             for day in range(1, 5):
-                if len(st.session_state.four_day_plan[day]) != 3:
-                    st.error(f"Day {day} must have exactly 3 events. Please select exactly 3 events for each day.")
-                    valid_plan = False
-                    break
+                if 'JUNK YARD' in st.session_state.four_day_plan[day]:
+                    junk_yard_day = day
+                    # If JUNK YARD is selected, it should be the only event for that day
+                    if len(st.session_state.four_day_plan[day]) > 1:
+                        st.error(f"Day {day} has JUNK YARD selected. JUNK YARD must be the only event for its day.")
+                        valid_plan = False
+                        break
+            
+            # For all other days, ensure exactly 3 events
+            for day in range(1, 5):
+                if day != junk_yard_day:
+                    if len(st.session_state.four_day_plan[day]) != 3:
+                        st.error(f"Day {day} must have exactly 3 events. Please select exactly 3 events for each day without JUNK YARD.")
+                        valid_plan = False
+                        break
             
             if valid_plan:
                 # Create a structured 4-day plan
                 structured_plan = []
                 for day in range(1, 5):
-                    for event_num, event_name in enumerate(st.session_state.four_day_plan[day], 1):
-                        # Find the event details
+                    # If this is the JUNK YARD day, it's a special case
+                    if day == junk_yard_day:
+                        event_name = 'JUNK YARD'
                         event_details = st.session_state.events_data[
                             st.session_state.events_data['Event_Name'] == event_name
                         ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
                         
                         if event_details:
-                            # Create plan entry
                             plan_entry = {
                                 'Day': day,
-                                'Event_Number': event_num,
+                                'Event_Number': 1,  # Only event for this day
                                 'Event_Name': event_name,
                                 'Equipment_Name': event_details.get('Equipment_Name', 'MIXED EQUIPMENT'),
                                 'Equipment_Weight': event_details.get('Equipment_Weight', 0),
@@ -442,6 +461,26 @@ with tabs[1]:
                                 'Distance': event_details.get('Distance', 0)
                             }
                             structured_plan.append(plan_entry)
+                    else:
+                        # Normal day with 3 events
+                        for event_num, event_name in enumerate(st.session_state.four_day_plan[day], 1):
+                            event_details = st.session_state.events_data[
+                                st.session_state.events_data['Event_Name'] == event_name
+                            ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
+                            
+                            if event_details:
+                                plan_entry = {
+                                    'Day': day,
+                                    'Event_Number': event_num,
+                                    'Event_Name': event_name,
+                                    'Equipment_Name': event_details.get('Equipment_Name', 'MIXED EQUIPMENT'),
+                                    'Equipment_Weight': event_details.get('Equipment_Weight', 0),
+                                    'Number_of_Equipment': event_details.get('Number_of_Equipment', 0),
+                                    'Time_Limit': event_details.get('Time_Limit', '00:00'),
+                                    'Initial_Participants': event_details.get('Initial_Participants', 18),
+                                    'Distance': event_details.get('Distance', 0)
+                                }
+                                structured_plan.append(plan_entry)
                 
                 # Store the structured plan
                 st.session_state.structured_four_day_plan = pd.DataFrame(structured_plan)

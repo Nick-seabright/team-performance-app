@@ -104,11 +104,12 @@ def load_events_data(file=None):
         # Process each unique event
         for _, event in events.iterrows():
             event_id = event['EventID']
+            event_name = event['EventName']
             
             # Get all equipment for this event
             event_equipment = event_equip_data[event_equip_data['EventID'] == event_id]
             
-            # Calculate total weight and count
+            # Calculate total weight using AppRatioWT instead of raw weights
             total_weight = event_equipment['AppRatioWT'].sum()
             total_count = event_equipment['EquipNum'].sum()
             
@@ -121,18 +122,24 @@ def load_events_data(file=None):
             seconds = int((time_std - total_minutes) * 60)
             time_limit = f"{total_minutes:02d}:{seconds:02d}"
             
-            # Distribute events across days (1-4) and event numbers (1-3)
-            # Simple distribution: events 1-6 on day 1, 7-12 on day 2, etc.
-            day = min(4, ((event_id - 1) // 6) + 1)
-            event_number = ((event_id - 1) % 3) + 1
+            # Handle special case for JUNK YARD - it counts as a full day
+            if event_name == 'JUNK YARD':
+                # Assign to a full day (e.g., Day 4)
+                day = 4
+                event_number = 1  # Only event for that day
+            else:
+                # Normal distribution for other events
+                # Simple distribution: events 1-6 on day 1, 7-12 on day 2, 13-18 on day 3, etc.
+                day = min(3, ((event_id - 1) // 6) + 1)  # Cap at day 3 to leave day 4 for JUNK YARD
+                event_number = ((event_id - 1) % 3) + 1
             
             # Create combined event record
             combined_event = {
                 'Day': day,
                 'Event_Number': event_number,
-                'Event_Name': event['EventName'],
+                'Event_Name': event_name,
                 'Equipment_Name': 'MIXED EQUIPMENT' if len(event_equipment) > 1 else event_equipment.iloc[0]['EquipmentName'],
-                'Equipment_Weight': total_weight,
+                'Equipment_Weight': total_weight,  # Using AppRatioWT sum
                 'Number_of_Equipment': total_count,
                 'Time_Limit': time_limit,  # Format: mm:ss
                 'Initial_Participants': 18,  # Default team size
@@ -328,103 +335,63 @@ def military_time_to_minutes(time_str):
         hours = int(parts[0])
         minutes = int(parts[1])
         
-import pandas as pd
-import numpy as np
+        if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+            raise ValueError("Invalid time values")
+        
+        return hours * 60 + minutes
+    except Exception as e:
+        st.error(f"Error converting military time: {str(e)}")
+        return 0
 
-def reshuffle_teams(active_participants, team_difficulty_df, target_team_size=17):
+def calculate_duration_minutes(start_time_str, end_time_str):
     """
-    Reshuffle participants into new teams for Days 3 and 4 with improved balancing
+    Calculate duration in minutes between two military times
     
     Parameters:
     -----------
-    active_participants : DataFrame
-        Dataframe of participants who haven't dropped
-    team_difficulty_df : DataFrame
-        Difficulty scores for each team from Days 1 and 2
-    target_team_size : int
-        Target number of participants per team
-    
+    start_time_str : str
+        Start time in military format (HH:MM)
+    end_time_str : str
+        End time in military format (HH:MM)
+        
     Returns:
     --------
-    DataFrame
-        New team assignments
+    float
+        Duration in minutes
     """
     try:
-        # Calculate the number of teams needed
-        num_participants = len(active_participants)
-        num_teams = max(1, round(num_participants / target_team_size))
+        start_minutes = military_time_to_minutes(start_time_str)
+        end_minutes = military_time_to_minutes(end_time_str)
         
-        # Assign performance scores based on team difficulty data
-        if team_difficulty_df is not None and 'Team' in team_difficulty_df.columns:
-            # Create a mapping of team to difficulty score
-            team_difficulty_map = dict(zip(
-                team_difficulty_df['Team'], 
-                team_difficulty_df['Difficulty_Score']
-            ))
-            
-            # Assign performance score to each participant based on their original team
-            active_participants['Performance_Score'] = active_participants['Initial_Team'].map(
-                team_difficulty_map
-            ).fillna(team_difficulty_df['Difficulty_Score'].mean())
-        else:
-            # If no team-specific data, assign random performance scores
-            active_participants['Performance_Score'] = np.random.uniform(0.8, 1.2, size=len(active_participants))
+        # Handle case where event spans midnight
+        if end_minutes < start_minutes:
+            end_minutes += 24 * 60  # Add a day in minutes
         
-        # Separate participants by type
-        of_participants = active_participants[active_participants['Candidate_Type'] == 'OF'].copy()
-        ade_participants = active_participants[active_participants['Candidate_Type'] == 'ADE'].copy()
-        
-        # Sort participants by performance score (alternating high/low to create balance)
-        of_participants = of_participants.sort_values('Performance_Score', ascending=False)
-        ade_participants = ade_participants.sort_values('Performance_Score', ascending=False)
-        
-        # Create zigzag pattern for distribution (to balance teams)
-        of_zigzag = []
-        for i in range(0, len(of_participants), 2*num_teams):
-            chunk = of_participants.iloc[i:i+2*num_teams]
-            if len(chunk) <= num_teams:
-                of_zigzag.extend(chunk.to_dict('records'))
-            else:
-                first_half = chunk.iloc[:num_teams]
-                second_half = chunk.iloc[num_teams:2*num_teams].iloc[::-1]  # Reverse second half
-                of_zigzag.extend(first_half.to_dict('records'))
-                of_zigzag.extend(second_half.to_dict('records'))
-        
-        ade_zigzag = []
-        for i in range(0, len(ade_participants), 2*num_teams):
-            chunk = ade_participants.iloc[i:i+2*num_teams]
-            if len(chunk) <= num_teams:
-                ade_zigzag.extend(chunk.to_dict('records'))
-            else:
-                first_half = chunk.iloc[:num_teams]
-                second_half = chunk.iloc[num_teams:2*num_teams].iloc[::-1]  # Reverse second half
-                ade_zigzag.extend(first_half.to_dict('records'))
-                ade_zigzag.extend(second_half.to_dict('records'))
-        
-        # Assign new team numbers with a distribution that balances performance
-        new_team_assignments = []
-        
-        # Distribute participants to teams
-        for i, participant in enumerate(of_zigzag):
-            team_num = i % num_teams + 1
-            participant['New_Team'] = f'Team {team_num}'
-            new_team_assignments.append(participant)
-        
-        for i, participant in enumerate(ade_zigzag):
-            team_num = i % num_teams + 1
-            participant['New_Team'] = f'Team {team_num}'
-            new_team_assignments.append(participant)
-        
-        # Create DataFrame from assignments
-        reshuffled_teams = pd.DataFrame(new_team_assignments)
-        
-        # Calculate and add team performance metrics
-        team_stats = reshuffled_teams.groupby('New_Team')['Performance_Score'].agg(['mean', 'std']).reset_index()
-        team_stats.columns = ['New_Team', 'Avg_Performance', 'Std_Performance']
-        
-        print(f"Team balance check - Std Dev of Avg Performances: {team_stats['Avg_Performance'].std():.4f}")
-        
-        return reshuffled_teams
+        duration = end_minutes - start_minutes
+        return duration
     except Exception as e:
-        print(f"Error reshuffling teams: {str(e)}")
-        return pd.DataFrame()
+        st.error(f"Error calculating duration: {str(e)}")
+        return 0
+
+def minutes_to_mmss(minutes):
+    """
+    Convert minutes to mm:ss format
+    
+    Parameters:
+    -----------
+    minutes : float
+        Duration in minutes
+        
+    Returns:
+    --------
+    str
+        Duration in mm:ss format
+    """
+    try:
+        total_minutes = int(minutes)
+        seconds = int((minutes - total_minutes) * 60)
+        
+        return f"{total_minutes:02d}:{seconds:02d}"
+    except Exception as e:
+        st.error(f"Error converting to mm:ss: {str(e)}")
+        return "00:00"
