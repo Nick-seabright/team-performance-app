@@ -1,33 +1,43 @@
 import pandas as pd
 import numpy as np
 
-def reshuffle_teams(active_participants, team_difficulty_scores, target_team_size=17):
+def reshuffle_teams(active_participants, team_difficulty_df, target_team_size=17):
     """
     Reshuffle participants into new teams for Days 3 and 4 with improved balancing
     
-    This algorithm:
-    1. Calculates performance scores for each participant based on their original team
-    2. Sorts participants by candidate type and performance
-    3. Distributes participants to create balanced teams
+    Parameters:
+    -----------
+    active_participants : DataFrame
+        Dataframe of participants who haven't dropped
+    team_difficulty_df : DataFrame
+        Difficulty scores for each team from Days 1 and 2
+    target_team_size : int
+        Target number of participants per team
+    
+    Returns:
+    --------
+    DataFrame
+        New team assignments
     """
     try:
         # Calculate the number of teams needed
         num_participants = len(active_participants)
         num_teams = max(1, round(num_participants / target_team_size))
         
-        # Get average difficulty scores by team
-        if 'Initial_Team' in active_participants.columns:
-            # Join difficulty data with participants
-            # This is a simplified approach - in a real app, you'd track individual performance
-            team_avg_difficulty = team_difficulty_scores.groupby('Day')['Actual_Difficulty'].mean().reset_index()
+        # Assign performance scores based on team difficulty data
+        if team_difficulty_df is not None and 'Team' in team_difficulty_df.columns:
+            # Create a mapping of team to difficulty score
+            team_difficulty_map = dict(zip(
+                team_difficulty_df['Team'], 
+                team_difficulty_df['Difficulty_Score']
+            ))
             
-            # Create a performance score for each participant based on their original team
-            # Higher scores mean more difficult events completed
-            active_participants['Performance_Score'] = active_participants['Initial_Team'].apply(
-                lambda x: team_avg_difficulty['Actual_Difficulty'].mean()  # Placeholder logic
-            )
+            # Assign performance score to each participant based on their original team
+            active_participants['Performance_Score'] = active_participants['Initial_Team'].map(
+                team_difficulty_map
+            ).fillna(team_difficulty_df['Difficulty_Score'].mean())
         else:
-            # If no team data available, use random performance scores
+            # If no team-specific data, assign random performance scores
             active_participants['Performance_Score'] = np.random.uniform(0.8, 1.2, size=len(active_participants))
         
         # Separate participants by type

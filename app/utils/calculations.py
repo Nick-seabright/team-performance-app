@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from utils.data_processing import time_str_to_minutes, minutes_to_time_str
+from utils.data_processing import time_str_to_minutes, minutes_to_time_str, military_time_to_minutes
 
 def calculate_initial_difficulty(temp_multiplier, total_weight, participants, distance, time_limit):
     """
@@ -19,52 +19,112 @@ def calculate_initial_difficulty(temp_multiplier, total_weight, participants, di
         return 0
 
 def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participants, 
-                              distance, time_actual, drops, drop_data, day, event_number, event_name):
+                              distance, time_actual_min, drops, 
+                              drop_data, day, event_number, event_name,
+                              start_time=None):
     """
     Calculate the actual difficulty score, accounting for participants who dropped
+    
+    Parameters:
+    -----------
+    temp_multiplier : float
+        Temperature multiplier based on heat category
+    total_weight : float
+        Total weight of equipment (lbs)
+    initial_participants : int
+        Initial number of participants
+    distance : float
+        Distance in kilometers
+    time_actual_min : float
+        Actual time in minutes
+    drops : int
+        Number of drops (if not using detailed drop data)
+    drop_data : DataFrame
+        Detailed drop data including drop times
+    day : int
+        Day of the event
+    event_number : int
+        Event number
+    event_name : str
+        Name of the event
+    start_time : str, optional
+        Start time of the event in military format (HH:MM)
+        
+    Returns:
+    --------
+    float
+        Actual difficulty score
     """
     try:
-        if initial_participants <= 0 or time_actual <= 0:
+        if initial_participants <= 0 or time_actual_min <= 0:
             return 0
         
         # If no drops, the calculation is simple
         if drops == 0:
-            difficulty = temp_multiplier * (total_weight / initial_participants) * (distance / time_actual)
+            difficulty = temp_multiplier * (total_weight / initial_participants) * (distance / time_actual_min)
             return difficulty
         
         # Filter drop data for this event
-        event_drops = drop_data[
-            (drop_data['Day'] == day) & 
-            (drop_data['Event_Number'] == event_number) &
-            (drop_data['Event_Name'] == event_name)
-        ]
+        if 'Team' in drop_data.columns:
+            # Filter by team and event
+            event_drops = drop_data[
+                (drop_data['Day'] == day) & 
+                (drop_data['Event_Number'] == event_number) &
+                (drop_data['Event_Name'] == event_name)
+            ]
+        else:
+            # Filter by event only
+            event_drops = drop_data[
+                (drop_data['Day'] == day) & 
+                (drop_data['Event_Number'] == event_number) &
+                (drop_data['Event_Name'] == event_name)
+            ]
         
         # If no drop data available for this event, use the provided drops count
         if event_drops.empty:
             effective_participants = initial_participants - (drops / 2)  # Approximate
-            difficulty = temp_multiplier * (total_weight / effective_participants) * (distance / time_actual)
+            difficulty = temp_multiplier * (total_weight / effective_participants) * (distance / time_actual_min)
             return difficulty
         
         # For each drop, calculate the effective participants
-        # This is a simplification - in a real app, you'd calculate the exact time spent with each participant count
-        drop_times = [time_str_to_minutes(t) for t in event_drops['Drop_Time']]
-        
-        # Sort drop times
-        drop_times.sort()
-        
-        # Calculate weighted average of participants
-        segments = [0] + drop_times + [time_actual]
-        participant_counts = list(range(initial_participants, initial_participants - len(drop_times) - 1, -1))
+        if start_time is None:
+            # If no start time provided, approximate using drop times relative to duration
+            drop_times_relative = [0.5 * time_actual_min] * len(event_drops)  # Assume drops at midpoint
+            
+            # Calculate weighted average of participants
+            segments = [0] + drop_times_relative + [time_actual_min]
+            participant_counts = list(range(initial_participants, initial_participants - len(drop_times_relative) - 1, -1))
+            
+        else:
+            # If start time provided, calculate minutes from start for each drop
+            start_minutes = military_time_to_minutes(start_time)
+            
+            drop_times_relative = []
+            for drop_time in event_drops['Drop_Time']:
+                drop_minutes = military_time_to_minutes(drop_time)
+                # Handle case where drop time is next day
+                if drop_minutes < start_minutes:
+                    drop_minutes += 24 * 60  # Add a day in minutes
+                
+                minutes_from_start = drop_minutes - start_minutes
+                drop_times_relative.append(minutes_from_start)
+            
+            # Sort drop times
+            drop_times_relative.sort()
+            
+            # Calculate weighted average of participants
+            segments = [0] + drop_times_relative + [time_actual_min]
+            participant_counts = list(range(initial_participants, initial_participants - len(drop_times_relative) - 1, -1))
         
         weighted_participants = 0
         for i in range(len(segments) - 1):
             segment_duration = segments[i+1] - segments[i]
             weighted_participants += participant_counts[i] * segment_duration
         
-        effective_participants = weighted_participants / time_actual
+        effective_participants = weighted_participants / time_actual_min
         
         # Calculate difficulty with effective participants
-        difficulty = temp_multiplier * (total_weight / effective_participants) * (distance / time_actual)
+        difficulty = temp_multiplier * (total_weight / effective_participants) * (distance / time_actual_min)
         return difficulty
     except Exception as e:
         print(f"Error calculating actual difficulty: {str(e)}")
@@ -142,7 +202,7 @@ def predict_team_success(team_composition, event_difficulty, past_performance=No
         total_strength = of_strength + ade_strength
         
         # If past performance data is available, use it to adjust strength
-        if past_performance is not None:
+        if past_performance is not None and not past_performance.empty:
             performance_boost = past_performance['Actual_Difficulty'].mean() / 10
             total_strength *= (1 + performance_boost)
         

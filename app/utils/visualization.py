@@ -79,22 +79,33 @@ def plot_team_difficulty_distribution(event_records, team_data, phase='Before Re
         # Filter event records for the relevant days
         filtered_events = event_records[event_records['Day'].isin(days)]
         
-        # Create dummy team assignments for visualization
-        teams = team_data[team_column].unique()
-        
-        # Create figure
-        fig = px.box(
-            filtered_events,
-            x='Day',
-            y='Actual_Difficulty',
-            color='Event_Number',
-            title=f'Difficulty Score Distribution ({phase})',
-            labels={
-                'Actual_Difficulty': 'Difficulty Score',
-                'Day': 'Day',
-                'Event_Number': 'Event Number'
-            }
-        )
+        # Check if we have team-specific data
+        if 'Team' in filtered_events.columns:
+            # Use the actual team data
+            fig = px.box(
+                filtered_events,
+                x='Team',
+                y='Actual_Difficulty',
+                color='Day',
+                title=f'Difficulty Score Distribution by Team ({phase})',
+                labels={
+                    'Actual_Difficulty': 'Difficulty Score',
+                    'Team': 'Team',
+                    'Day': 'Day'
+                }
+            )
+        else:
+            # Create a distribution by day only
+            fig = px.box(
+                filtered_events,
+                x='Day',
+                y='Actual_Difficulty',
+                title=f'Difficulty Score Distribution ({phase})',
+                labels={
+                    'Actual_Difficulty': 'Difficulty Score',
+                    'Day': 'Day'
+                }
+            )
         
         return fig
     except Exception as e:
@@ -121,23 +132,41 @@ def plot_final_difficulty_scores(event_records, team_data):
         if event_records.empty or team_data.empty:
             return go.Figure()
         
-        # Calculate average difficulty by day
-        daily_difficulty = event_records.groupby('Day')['Actual_Difficulty'].mean().reset_index()
-        
-        # Create figure
-        fig = px.bar(
-            daily_difficulty,
-            x='Day',
-            y='Actual_Difficulty',
-            title='Final Average Difficulty Scores by Day',
-            labels={
-                'Actual_Difficulty': 'Average Difficulty Score',
-                'Day': 'Day'
-            }
-        )
+        # Check if we have team-specific data
+        if 'Team' in event_records.columns:
+            # Calculate average difficulty by team
+            team_difficulty = event_records.groupby('Team')['Actual_Difficulty'].mean().reset_index()
+            team_difficulty = team_difficulty.sort_values('Actual_Difficulty', ascending=False)
+            
+            # Create figure
+            fig = px.bar(
+                team_difficulty,
+                x='Team',
+                y='Actual_Difficulty',
+                title='Final Average Difficulty Scores by Team',
+                labels={
+                    'Actual_Difficulty': 'Average Difficulty Score',
+                    'Team': 'Team'
+                }
+            )
+        else:
+            # Calculate average difficulty by day
+            daily_difficulty = event_records.groupby('Day')['Actual_Difficulty'].mean().reset_index()
+            
+            # Create figure
+            fig = px.bar(
+                daily_difficulty,
+                x='Day',
+                y='Actual_Difficulty',
+                title='Final Average Difficulty Scores by Day',
+                labels={
+                    'Actual_Difficulty': 'Average Difficulty Score',
+                    'Day': 'Day'
+                }
+            )
         
         # Add a line for the overall average
-        overall_avg = daily_difficulty['Actual_Difficulty'].mean()
+        overall_avg = event_records['Actual_Difficulty'].mean()
         fig.add_hline(
             y=overall_avg,
             line_dash="dash",
