@@ -392,7 +392,7 @@ with tabs[1]:
                     # Clear button
                     if st.button(f"Clear Day {day} Selection", key=f"clear_day_{day}"):
                         st.session_state[f"day_{day}_events"] = []
-                        st.experimental_rerun()
+                        st.rerun()
                     
                     # Add events based on checkboxes
                     st.write(f"**Selected ({len(st.session_state[f'day_{day}_events'])}/3):**")
@@ -414,10 +414,10 @@ with tabs[1]:
                     
                     if junk_yard_checkbox and not junk_yard_selected:
                         st.session_state[f"day_{day}_events"] = ["JUNK YARD"]
-                        st.experimental_rerun()
+                        st.rerun()
                     elif not junk_yard_checkbox and junk_yard_selected:
                         st.session_state[f"day_{day}_events"] = []
-                        st.experimental_rerun()
+                        st.rerun()
                     
                     # If JUNK YARD is selected, don't show other options
                     if not junk_yard_selected:
@@ -448,10 +448,10 @@ with tabs[1]:
                                         # Only allow up to 3 selections
                                         if len(st.session_state[f"day_{day}_events"]) < 3:
                                             st.session_state[f"day_{day}_events"].append(event)
-                                            st.experimental_rerun()
+                                            st.rerun()
                                     elif not event_checkbox and event_selected:
                                         st.session_state[f"day_{day}_events"].remove(event)
-                                        st.experimental_rerun()
+                                        st.rerun()
                 
                 # Update the four_day_plan with the current selections
                 st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
