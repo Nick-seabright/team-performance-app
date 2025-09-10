@@ -370,113 +370,91 @@ with tabs[1]:
         # Get all unique events
         all_events = sorted(st.session_state.events_data['Event_Name'].unique())
         
-        # Initialize session state keys for each day's selections if they don't exist
-        for day in range(1, 5):
-            if f"day_{day}_selected_events" not in st.session_state:
-                st.session_state[f"day_{day}_selected_events"] = []
-        
         # Create columns for each day
         day_cols = st.columns(4)
         
-        # Day 1
-        with day_cols[0]:
-            st.subheader("Day 1")
-            st.markdown("<small>Note: If you select JUNK YARD, it must be the only event for that day.</small>", unsafe_allow_html=True)
-            day_1_events = st.multiselect(
-                "Select 3 events for Day 1",
-                options=all_events,
-                default=st.session_state.day_1_selected_events,
-                key="day_1_ms"
-            )
-            st.session_state.day_1_selected_events = day_1_events
-            st.session_state.four_day_plan[1] = day_1_events
-            
-            # Show warning if not exactly 3 events selected
-            if 'JUNK YARD' in day_1_events:
-                if len(day_1_events) > 1:
-                    st.warning("JUNK YARD must be the only event for its day.")
-            elif len(day_1_events) != 3:
-                st.warning(f"Please select exactly 3 events. Currently selected: {len(day_1_events)}")
-            
-            # Display selected events
-            if day_1_events:
-                for i, event in enumerate(day_1_events, 1):
-                    st.write(f"Event {i}: {event}")
-        
-        # Day 2
-        with day_cols[1]:
-            st.subheader("Day 2")
-            st.markdown("<small>Note: If you select JUNK YARD, it must be the only event for that day.</small>", unsafe_allow_html=True)
-            day_2_events = st.multiselect(
-                "Select 3 events for Day 2",
-                options=all_events,
-                default=st.session_state.day_2_selected_events,
-                key="day_2_ms"
-            )
-            st.session_state.day_2_selected_events = day_2_events
-            st.session_state.four_day_plan[2] = day_2_events
-            
-            # Show warning if not exactly 3 events selected
-            if 'JUNK YARD' in day_2_events:
-                if len(day_2_events) > 1:
-                    st.warning("JUNK YARD must be the only event for its day.")
-            elif len(day_2_events) != 3:
-                st.warning(f"Please select exactly 3 events. Currently selected: {len(day_2_events)}")
-            
-            # Display selected events
-            if day_2_events:
-                for i, event in enumerate(day_2_events, 1):
-                    st.write(f"Event {i}: {event}")
-        
-        # Day 3
-        with day_cols[2]:
-            st.subheader("Day 3")
-            st.markdown("<small>Note: If you select JUNK YARD, it must be the only event for that day.</small>", unsafe_allow_html=True)
-            day_3_events = st.multiselect(
-                "Select 3 events for Day 3",
-                options=all_events,
-                default=st.session_state.day_3_selected_events,
-                key="day_3_ms"
-            )
-            st.session_state.day_3_selected_events = day_3_events
-            st.session_state.four_day_plan[3] = day_3_events
-            
-            # Show warning if not exactly 3 events selected
-            if 'JUNK YARD' in day_3_events:
-                if len(day_3_events) > 1:
-                    st.warning("JUNK YARD must be the only event for its day.")
-            elif len(day_3_events) != 3:
-                st.warning(f"Please select exactly 3 events. Currently selected: {len(day_3_events)}")
-            
-            # Display selected events
-            if day_3_events:
-                for i, event in enumerate(day_3_events, 1):
-                    st.write(f"Event {i}: {event}")
-        
-        # Day 4
-        with day_cols[3]:
-            st.subheader("Day 4")
-            st.markdown("<small>Note: If you select JUNK YARD, it must be the only event for that day.</small>", unsafe_allow_html=True)
-            day_4_events = st.multiselect(
-                "Select 3 events for Day 4",
-                options=all_events,
-                default=st.session_state.day_4_selected_events,
-                key="day_4_ms"
-            )
-            st.session_state.day_4_selected_events = day_4_events
-            st.session_state.four_day_plan[4] = day_4_events
-            
-            # Show warning if not exactly 3 events selected
-            if 'JUNK YARD' in day_4_events:
-                if len(day_4_events) > 1:
-                    st.warning("JUNK YARD must be the only event for its day.")
-            elif len(day_4_events) != 3:
-                st.warning(f"Please select exactly 3 events. Currently selected: {len(day_4_events)}")
-            
-            # Display selected events
-            if day_4_events:
-                for i, event in enumerate(day_4_events, 1):
-                    st.write(f"Event {i}: {event}")
+        # For each day, create checkboxes for event selection
+        for day in range(1, 5):
+            with day_cols[day-1]:
+                st.subheader(f"Day {day}")
+                st.markdown("<small>Note: If you select JUNK YARD, it must be the only event for that day.</small>", unsafe_allow_html=True)
+                
+                # Initialize or get current selections
+                if f"day_{day}_events" not in st.session_state:
+                    st.session_state[f"day_{day}_events"] = []
+                
+                # Create a container for checkboxes
+                event_container = st.container()
+                
+                # Create checkboxes for each event
+                selected_events = []
+                with event_container:
+                    # Clear button
+                    if st.button(f"Clear Day {day} Selection", key=f"clear_day_{day}"):
+                        st.session_state[f"day_{day}_events"] = []
+                        st.experimental_rerun()
+                    
+                    # Add events based on checkboxes
+                    st.write(f"**Selected ({len(st.session_state[f'day_{day}_events'])}/3):**")
+                    if st.session_state[f"day_{day}_events"]:
+                        for i, event in enumerate(st.session_state[f"day_{day}_events"], 1):
+                            st.write(f"{i}. {event}")
+                    else:
+                        st.write("No events selected yet")
+                    
+                    st.write("**Choose events:**")
+                    
+                    # Special handling for JUNK YARD
+                    junk_yard_selected = "JUNK YARD" in st.session_state[f"day_{day}_events"]
+                    junk_yard_checkbox = st.checkbox(
+                        "JUNK YARD (exclusive)", 
+                        value=junk_yard_selected,
+                        key=f"junk_yard_{day}"
+                    )
+                    
+                    if junk_yard_checkbox and not junk_yard_selected:
+                        st.session_state[f"day_{day}_events"] = ["JUNK YARD"]
+                        st.experimental_rerun()
+                    elif not junk_yard_checkbox and junk_yard_selected:
+                        st.session_state[f"day_{day}_events"] = []
+                        st.experimental_rerun()
+                    
+                    # If JUNK YARD is selected, don't show other options
+                    if not junk_yard_selected:
+                        # Divide events into groups for easier selection
+                        event_groups = {}
+                        for event in all_events:
+                            if event == "JUNK YARD":
+                                continue
+                                
+                            # Group by first word
+                            group_name = event.split()[0]
+                            if group_name not in event_groups:
+                                event_groups[group_name] = []
+                            event_groups[group_name].append(event)
+                        
+                        # Display events by group
+                        for group_name, group_events in event_groups.items():
+                            with st.expander(f"{group_name} Events"):
+                                for event in group_events:
+                                    event_selected = event in st.session_state[f"day_{day}_events"]
+                                    event_checkbox = st.checkbox(
+                                        event, 
+                                        value=event_selected,
+                                        key=f"{event}_{day}"
+                                    )
+                                    
+                                    if event_checkbox and not event_selected:
+                                        # Only allow up to 3 selections
+                                        if len(st.session_state[f"day_{day}_events"]) < 3:
+                                            st.session_state[f"day_{day}_events"].append(event)
+                                            st.experimental_rerun()
+                                    elif not event_checkbox and event_selected:
+                                        st.session_state[f"day_{day}_events"].remove(event)
+                                        st.experimental_rerun()
+                
+                # Update the four_day_plan with the current selections
+                st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
         
         # Button to save the 4-day plan
         if st.button("Save 4 Day Plan"):
