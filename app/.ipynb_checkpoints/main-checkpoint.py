@@ -393,13 +393,13 @@ with tabs[1]:
                         if st.button("🗑️", key=f"remove_{day}_{event}"):
                             st.session_state[f"day_{day}_events"].remove(event)
                             st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
-                            st.experimental_rerun()
+                            st.rerun()
                 
                 # Clear all button
                 if st.button("Clear All", key=f"clear_all_{day}"):
                     st.session_state[f"day_{day}_events"] = []
                     st.session_state.four_day_plan[day] = []
-                    st.experimental_rerun()
+                    st.rerun()
                 
                 # Add events section
                 st.write("**Add Events:**")
@@ -409,7 +409,7 @@ with tabs[1]:
                     if st.button("Add JUNK YARD (exclusive)", key=f"add_junkyard_{day}"):
                         st.session_state[f"day_{day}_events"] = ["JUNK YARD"]
                         st.session_state.four_day_plan[day] = ["JUNK YARD"]
-                        st.experimental_rerun()
+                        st.rerun()
                 
                 # Add other events
                 # Only show if JUNK YARD is not selected or max not reached
@@ -422,7 +422,7 @@ with tabs[1]:
                         if st.button("Add Event", key=f"add_event_{day}"):
                             st.session_state[f"day_{day}_events"].append(selected_event)
                             st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
-                            st.experimental_rerun()
+                            st.rerun()
                 
                 # Update the main four_day_plan
                 st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
