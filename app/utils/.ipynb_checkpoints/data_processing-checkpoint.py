@@ -15,12 +15,12 @@ def load_roster_data(file=None):
         if file is None:
             # Use default data
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            default_path = os.path.join(script_dir, 'data', 'roster_data.csv')
+            default_path = os.path.join(script_dir, 'data', 'sample_roster.csv')
             
             st.write(f"Looking for roster at: {default_path}")
             
             if os.path.exists(default_path):
-                st.write("Found roster_data.csv, loading it")
+                st.write("Found sample_roster.csv, loading it")
                 try:
                     df = pd.read_csv(default_path)
                     st.write(f"Loaded roster with shape: {df.shape}")
@@ -29,7 +29,7 @@ def load_roster_data(file=None):
                     st.error(f"Error reading CSV: {str(e)}")
                     return create_default_roster()
             else:
-                st.write("roster_data.csv not found, creating default roster")
+                st.write("sample_roster.csv not found, creating default roster")
                 return create_default_roster()
         else:
             st.write("Loading roster from uploaded file")
@@ -425,7 +425,7 @@ def debug_file_paths():
             files = os.listdir(data_dir)
             st.write(f"Files in data directory: {files}")
         
-        roster_path = os.path.join(data_dir, 'roster_data.csv')
+        roster_path = os.path.join(data_dir, 'sample_roster.csv')
         st.write(f"Roster path: {roster_path}")
         st.write(f"Roster file exists: {os.path.exists(roster_path)}")
         
