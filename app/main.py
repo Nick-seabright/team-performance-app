@@ -361,10 +361,6 @@ with tabs[1]:
         if 'four_day_plan' not in st.session_state:
             st.session_state.four_day_plan = {1: [], 2: [], 3: [], 4: []}
         
-        # Initialize selected_events_dict in session state if not exists
-        if 'selected_events_dict' not in st.session_state:
-            st.session_state.selected_events_dict = {1: [], 2: [], 3: [], 4: []}
-        
         # Display instructions
         st.markdown("""
         Select 3 events for each day of the 4-day event. These events will be used as defaults for all teams.
@@ -374,57 +370,70 @@ with tabs[1]:
         # Get all unique events
         all_events = sorted(st.session_state.events_data['Event_Name'].unique())
         
-        # Create a container for the plan
-        plan_container = st.container()
+        # Use a form to prevent page refreshes
+        with st.form("four_day_plan_form"):
+            # Create columns for each day
+            day_cols = st.columns(4)
+            
+            # For each day, create a section to select 3 events
+            for day in range(1, 5):
+                with day_cols[day-1]:
+                    st.subheader(f"Day {day}")
+                    
+                    # Add a note about JUNK YARD
+                    st.markdown("""
+                    <small>Note: If you select JUNK YARD, it must be the only event for that day.</small>
+                    """, unsafe_allow_html=True)
+                    
+                    # Get current selections
+                    current_selections = st.session_state.four_day_plan.get(day, [])
+                    
+                    # MultiSelect to choose 3 events for this day
+                    selected_events = st.multiselect(
+                        f"Select 3 events for Day {day}",
+                        options=all_events,
+                        default=current_selections,
+                        key=f"day_{day}_events_form"
+                    )
+                    
+                    # Store selections temporarily in a variable we'll access after form submission
+                    if f"temp_day_{day}_events" not in st.session_state:
+                        st.session_state[f"temp_day_{day}_events"] = selected_events
+                    
+                    # Show warning if not exactly 3 events selected
+                    if len(selected_events) != 3 and 'JUNK YARD' not in selected_events:
+                        st.warning(f"Please select exactly 3 events for Day {day}. Currently selected: {len(selected_events)}")
+                    elif 'JUNK YARD' in selected_events and len(selected_events) > 1:
+                        st.warning(f"If JUNK YARD is selected, it must be the only event for Day {day}.")
+            
+            # Submit button for the form
+            submit_button = st.form_submit_button("Update 4-Day Plan")
+            
+            if submit_button:
+                # Update the plan with the selections from the form
+                for day in range(1, 5):
+                    st.session_state.four_day_plan[day] = st.session_state[f"temp_day_{day}_events"]
+                
+                st.success("4-Day Plan updated successfully!")
         
-        # Create columns for each day
-        day_cols = plan_container.columns(4)
+        # Display current selections outside the form
+        st.subheader("Current 4-Day Plan")
+        current_plan_cols = st.columns(4)
         
-        # Define callback function to update selected events for a day
-        def update_selected_events(day, selected_events):
-            st.session_state.selected_events_dict[day] = selected_events
-            st.session_state.four_day_plan[day] = selected_events
-        
-        # For each day, create a section to select 3 events
         for day in range(1, 5):
-            with day_cols[day-1]:
-                st.subheader(f"Day {day}")
-                
-                # Add a note about JUNK YARD
-                st.markdown("""
-                <small>Note: If you select JUNK YARD, it must be the only event for that day.</small>
-                """, unsafe_allow_html=True)
-                
-                # Use the stored selections from session state
-                default_selections = st.session_state.selected_events_dict.get(day, [])
-                
-                # MultiSelect to choose 3 events for this day with unique key
-                selected_events = st.multiselect(
-                    f"Select 3 events for Day {day}",
-                    options=all_events,
-                    default=default_selections,
-                    key=f"day_{day}_events_ms"
-                )
-                
-                # Store the selected events in session state
-                if selected_events != st.session_state.selected_events_dict.get(day, []):
-                    update_selected_events(day, selected_events)
-                
-                # Show warning if not exactly 3 events selected
-                if len(selected_events) != 3:
-                    st.warning(f"Please select exactly 3 events for Day {day}. Currently selected: {len(selected_events)}")
-                
-                # Display the selected events
-                if selected_events:
-                    for i, event in enumerate(selected_events, 1):
-                        st.write(f"Event {i}: {event}")
+            with current_plan_cols[day-1]:
+                st.write(f"**Day {day}**")
+                if day in st.session_state.four_day_plan and st.session_state.four_day_plan[day]:
+                    for i, event in enumerate(st.session_state.four_day_plan[day], 1):
+                        st.write(f"{i}. {event}")
+                else:
+                    st.write("No events selected yet.")
         
-        # Button to save the 4-day plan
-        if st.button("Save 4 Day Plan"):
+        # Button to save the 4-day plan to structured format
+        if st.button("Save 4 Day Plan to Structured Format"):
             # Validate that each day has exactly 3 events (except for day with JUNK YARD)
             valid_plan = True
             junk_yard_day = None
-            
             # Check if JUNK YARD is in any day's plan
             for day in range(1, 5):
                 if 'JUNK YARD' in st.session_state.four_day_plan[day]:
@@ -434,7 +443,6 @@ with tabs[1]:
                         st.error(f"Day {day} has JUNK YARD selected. JUNK YARD must be the only event for its day.")
                         valid_plan = False
                         break
-            
             # For all other days, ensure exactly 3 events
             for day in range(1, 5):
                 if day != junk_yard_day:
@@ -442,10 +450,12 @@ with tabs[1]:
                         st.error(f"Day {day} must have exactly 3 events. Please select exactly 3 events for each day without JUNK YARD.")
                         valid_plan = False
                         break
-            
+                        
             if valid_plan:
                 # Create a structured 4-day plan
                 structured_plan = []
+                
+                # Logic to build structured plan remains the same...
                 for day in range(1, 5):
                     # If this is the JUNK YARD day, it's a special case
                     if day == junk_yard_day:
@@ -453,7 +463,6 @@ with tabs[1]:
                         event_details = st.session_state.events_data[
                             st.session_state.events_data['Event_Name'] == event_name
                         ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
-                        
                         if event_details:
                             plan_entry = {
                                 'Day': day,
@@ -473,7 +482,6 @@ with tabs[1]:
                             event_details = st.session_state.events_data[
                                 st.session_state.events_data['Event_Name'] == event_name
                             ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
-                            
                             if event_details:
                                 plan_entry = {
                                     'Day': day,
