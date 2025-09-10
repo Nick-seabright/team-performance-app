@@ -279,7 +279,10 @@ with tabs[0]:
     
     if use_default_roster:
         st.session_state.roster_data = load_roster_data()
-        st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
+        if st.session_state.roster_data is not None and len(st.session_state.roster_data) > 0:
+            st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
+        else:
+            st.error("Failed to load default roster data. Check the logs for details.")
     else:
         upload_method = st.radio("Choose upload method for roster:", ["CSV File", "SQL Server"])
         

@@ -12,27 +12,43 @@ def load_roster_data(file=None):
             # Use default data
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             default_path = os.path.join(script_dir, 'data', 'sample_roster.csv')
+            
+            # Print debug information
+            print(f"Looking for default roster at: {default_path}")
+            print(f"Directory exists: {os.path.exists(os.path.dirname(default_path))}")
+            print(f"File exists: {os.path.exists(default_path)}")
+            
             if os.path.exists(default_path):
                 df = pd.read_csv(default_path)
+                print(f"Successfully loaded roster with {len(df)} rows")
             else:
                 # Create sample data if file doesn't exist
+                print("Creating default roster data")
                 df = create_default_roster()
+                
+                # Create directory if it doesn't exist
+                os.makedirs(os.path.dirname(default_path), exist_ok=True)
+                
                 # Save it for future use
-                df.to_csv(default_path, index=False)
+                try:
+                    df.to_csv(default_path, index=False)
+                    print(f"Saved default roster to {default_path}")
+                except Exception as e:
+                    print(f"Error saving default roster: {str(e)}")
         else:
             df = pd.read_csv(file)
-        
+            
         # Ensure required columns exist
         required_columns = ['Candidate_Name', 'Roster_Number', 'Candidate_Type', 'Initial_Team']
-        
         # Check if all required columns exist
         for col in required_columns:
             if col not in df.columns:
                 st.error(f"Required column '{col}' not found in the roster CSV file.")
                 return None
-        
+                
         return df
     except Exception as e:
+        print(f"Error loading roster data: {str(e)}")
         st.error(f"Error loading roster data: {str(e)}")
         return None
 
