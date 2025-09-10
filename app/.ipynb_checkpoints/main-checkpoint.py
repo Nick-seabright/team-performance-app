@@ -86,6 +86,10 @@ if 'reshuffled_teams' not in st.session_state:
     st.session_state.reshuffled_teams = None
 if 'session_name' not in st.session_state:
     st.session_state.session_name = "default_session"
+if 'four_day_plan' not in st.session_state:
+    st.session_state.four_day_plan = {1: [], 2: [], 3: [], 4: []}
+if 'structured_four_day_plan' not in st.session_state:
+    st.session_state.structured_four_day_plan = None
 
 # Functions for session state persistence
 def save_session_state(session_name=None):
@@ -116,6 +120,14 @@ def save_session_state(session_name=None):
     if st.session_state.reshuffled_teams is not None:
         st.session_state.reshuffled_teams.to_csv(os.path.join(session_dir, 'reshuffled_teams.csv'), index=False)
     
+    # Save the 4-day plan
+    if st.session_state.structured_four_day_plan is not None:
+        st.session_state.structured_four_day_plan.to_csv(os.path.join(session_dir, 'four_day_plan.csv'), index=False)
+    
+    # Save a JSON file with the four_day_plan dictionary
+    with open(os.path.join(session_dir, 'four_day_plan_dict.json'), 'w') as f:
+        json.dump(st.session_state.four_day_plan, f)
+    
     # Save a metadata file with timestamp
     metadata = {
         'session_name': st.session_state.session_name,
@@ -125,7 +137,8 @@ def save_session_state(session_name=None):
         'has_events': st.session_state.events_data is not None,
         'has_event_records': not st.session_state.event_records.empty,
         'has_drop_data': not st.session_state.drop_data.empty,
-        'has_reshuffled_teams': st.session_state.reshuffled_teams is not None
+        'has_reshuffled_teams': st.session_state.reshuffled_teams is not None,
+        'has_four_day_plan': st.session_state.structured_four_day_plan is not None
     }
     
     with open(os.path.join(session_dir, 'metadata.json'), 'w') as f:
@@ -176,6 +189,22 @@ def load_session_state(session_name):
         reshuffled_teams_path = os.path.join(session_dir, 'reshuffled_teams.csv')
         if os.path.exists(reshuffled_teams_path):
             st.session_state.reshuffled_teams = pd.read_csv(reshuffled_teams_path)
+        
+        # Load the 4-day plan if it exists
+        four_day_plan_path = os.path.join(session_dir, 'four_day_plan.csv')
+        if os.path.exists(four_day_plan_path):
+            st.session_state.structured_four_day_plan = pd.read_csv(four_day_plan_path)
+        
+        # Load the four_day_plan dictionary if it exists
+        four_day_plan_dict_path = os.path.join(session_dir, 'four_day_plan_dict.json')
+        if os.path.exists(four_day_plan_dict_path):
+            with open(four_day_plan_dict_path, 'r') as f:
+                plan_dict = json.load(f)
+                # Convert string keys to integers
+                st.session_state.four_day_plan = {int(k): v for k, v in plan_dict.items()}
+        else:
+            # Initialize empty plan if not found
+            st.session_state.four_day_plan = {1: [], 2: [], 3: [], 4: []}
         
         # Update session name
         st.session_state.session_name = session_name
@@ -236,7 +265,7 @@ else:
     st.sidebar.info("No saved sessions found.")
 
 # Create tabs for different sections
-tabs = st.tabs(["Data Upload", "Event Recording", "Drop Management", "Team Reshuffling",
+tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording", "Drop Management", "Team Reshuffling",
                 "Adjust Difficulty", "Final Scores", "Visualizations", "Predictive Analytics"])
 
 # Tab 1: Data Upload
@@ -320,8 +349,122 @@ with tabs[0]:
             event_equipment_data = load_event_equip_data()
             st.dataframe(event_equipment_data)
 
-# Tab 2: Event Recording
+# Tab 2: Set 4 Day Plan
 with tabs[1]:
+    st.header("Set 4 Day Plan")
+    
+    # Check if event data is loaded
+    if st.session_state.events_data is not None:
+        # Create a session state variable to store the 4-day plan if it doesn't exist
+        if 'four_day_plan' not in st.session_state:
+            st.session_state.four_day_plan = {}
+            for day in range(1, 5):
+                st.session_state.four_day_plan[day] = []
+        
+        # Display instructions
+        st.markdown("""
+        Select 3 events for each day of the 4-day event. These events will be used as defaults for all teams.
+        Each team can later modify their specific event details during event recording.
+        """)
+        
+        # Get all unique events
+        all_events = sorted(st.session_state.events_data['Event_Name'].unique())
+        
+        # Create a container for the plan
+        plan_container = st.container()
+        
+        # Create columns for each day
+        day_cols = plan_container.columns(4)
+        
+        # For each day, create a section to select 3 events
+        for day in range(1, 5):
+            with day_cols[day-1]:
+                st.subheader(f"Day {day}")
+                
+                # If we already have selections for this day, use them as defaults
+                default_indices = []
+                if day in st.session_state.four_day_plan and st.session_state.four_day_plan[day]:
+                    for event in st.session_state.four_day_plan[day]:
+                        if event in all_events:
+                            default_indices.append(all_events.index(event))
+                
+                # MultiSelect to choose 3 events for this day
+                selected_events = st.multiselect(
+                    f"Select 3 events for Day {day}",
+                    options=all_events,
+                    default=[all_events[i] for i in default_indices if i < len(all_events)] if default_indices else [],
+                    key=f"day_{day}_events"
+                )
+                
+                # Show warning if not exactly 3 events selected
+                if len(selected_events) != 3:
+                    st.warning(f"Please select exactly 3 events for Day {day}. Currently selected: {len(selected_events)}")
+                
+                # Store the selected events in the session state
+                st.session_state.four_day_plan[day] = selected_events
+                
+                # Display the selected events
+                if selected_events:
+                    for i, event in enumerate(selected_events, 1):
+                        st.write(f"Event {i}: {event}")
+        
+        # Button to save the 4-day plan
+        if st.button("Save 4 Day Plan"):
+            # Validate that each day has exactly 3 events
+            valid_plan = True
+            for day in range(1, 5):
+                if len(st.session_state.four_day_plan[day]) != 3:
+                    st.error(f"Day {day} must have exactly 3 events. Please select exactly 3 events for each day.")
+                    valid_plan = False
+                    break
+            
+            if valid_plan:
+                # Create a structured 4-day plan
+                structured_plan = []
+                for day in range(1, 5):
+                    for event_num, event_name in enumerate(st.session_state.four_day_plan[day], 1):
+                        # Find the event details
+                        event_details = st.session_state.events_data[
+                            st.session_state.events_data['Event_Name'] == event_name
+                        ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
+                        
+                        if event_details:
+                            # Create plan entry
+                            plan_entry = {
+                                'Day': day,
+                                'Event_Number': event_num,
+                                'Event_Name': event_name,
+                                'Equipment_Name': event_details.get('Equipment_Name', 'MIXED EQUIPMENT'),
+                                'Equipment_Weight': event_details.get('Equipment_Weight', 0),
+                                'Number_of_Equipment': event_details.get('Number_of_Equipment', 0),
+                                'Time_Limit': event_details.get('Time_Limit', '00:00'),
+                                'Initial_Participants': event_details.get('Initial_Participants', 18),
+                                'Distance': event_details.get('Distance', 0)
+                            }
+                            structured_plan.append(plan_entry)
+                
+                # Store the structured plan
+                st.session_state.structured_four_day_plan = pd.DataFrame(structured_plan)
+                
+                # Save the session to preserve the plan
+                save_session_state()
+                
+                st.success("4 Day Plan saved successfully! These events will now be available as defaults for each team.")
+                
+                # Display the structured plan
+                st.subheader("Structured 4 Day Plan")
+                st.dataframe(st.session_state.structured_four_day_plan)
+                
+                # Add a download button
+                csv = st.session_state.structured_four_day_plan.to_csv(index=False)
+                b64 = base64.b64encode(csv.encode()).decode()
+                href = f'<a href="data:file/csv;base64,{b64}" download="four_day_plan.csv">Download 4 Day Plan CSV</a>'
+                st.markdown(href, unsafe_allow_html=True)
+    else:
+        st.warning("Please upload or select event data first to set up the 4-day plan.")
+
+# Tab 3: Event Recording
+with tabs[2]:
     st.header("Event Data Recording")
     
     # First, select the team for which we're recording data
@@ -370,27 +513,78 @@ with tabs[1]:
                     default_day = 1
                 
                 day = st.selectbox("Day", options=day_options, index=day_options.index(default_day))
-                event_number = st.selectbox("Event Number", options=[1, 2, 3])
                 
-                # Filter events based on day and event number
-                if st.session_state.events_data is not None:
-                    filtered_events = st.session_state.events_data[
-                        (st.session_state.events_data['Day'] == day) & 
-                        (st.session_state.events_data['Event_Number'] == event_number)
+                # If we have a 4-day plan, use it to filter event options
+                if 'structured_four_day_plan' in st.session_state:
+                    day_events = st.session_state.structured_four_day_plan[
+                        st.session_state.structured_four_day_plan['Day'] == day
                     ]
-                    if not filtered_events.empty:
-                        event_name = st.selectbox(
-                            "Event Name", 
-                            options=filtered_events['Event_Name'].unique()
+                    
+                    if not day_events.empty:
+                        event_number = st.selectbox(
+                            "Event Number", 
+                            options=day_events['Event_Number'].unique(),
+                            key=f"event_num_{team_name}_{day}"
                         )
-                        # Auto-fill other event details based on selection
-                        selected_event = filtered_events[filtered_events['Event_Name'] == event_name].iloc[0]
+                        
+                        # Get the event details for this day and event number
+                        event_details = day_events[
+                            day_events['Event_Number'] == event_number
+                        ].iloc[0]
+                        
+                        event_name = event_details['Event_Name']
+                        
+                        # Display the event name (not selectable)
+                        st.write(f"Event Name: {event_name}")
+                        
+                        # Auto-fill other event details based on the 4-day plan
+                        selected_event = event_details
+                    else:
+                        # Fallback to regular event selection
+                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                        
+                        # Filter events based on day and event number from the original data
+                        if st.session_state.events_data is not None:
+                            filtered_events = st.session_state.events_data[
+                                (st.session_state.events_data['Day'] == day) & 
+                                (st.session_state.events_data['Event_Number'] == event_number)
+                            ]
+                            if not filtered_events.empty:
+                                event_name = st.selectbox(
+                                    "Event Name", 
+                                    options=filtered_events['Event_Name'].unique()
+                                )
+                                # Auto-fill other event details based on selection
+                                selected_event = filtered_events[filtered_events['Event_Name'] == event_name].iloc[0]
+                            else:
+                                event_name = st.text_input("Event Name")
+                                selected_event = None
+                        else:
+                            event_name = st.text_input("Event Name")
+                            selected_event = None
+                else:
+                    # Fallback to regular event selection
+                    event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                    
+                    # Filter events based on day and event number
+                    if st.session_state.events_data is not None:
+                        filtered_events = st.session_state.events_data[
+                            (st.session_state.events_data['Day'] == day) & 
+                            (st.session_state.events_data['Event_Number'] == event_number)
+                        ]
+                        if not filtered_events.empty:
+                            event_name = st.selectbox(
+                                "Event Name", 
+                                options=filtered_events['Event_Name'].unique()
+                            )
+                            # Auto-fill other event details based on selection
+                            selected_event = filtered_events[filtered_events['Event_Name'] == event_name].iloc[0]
+                        else:
+                            event_name = st.text_input("Event Name")
+                            selected_event = None
                     else:
                         event_name = st.text_input("Event Name")
                         selected_event = None
-                else:
-                    event_name = st.text_input("Event Name")
-                    selected_event = None
             
             with col2:
                 if selected_event is not None:
@@ -578,8 +772,8 @@ with tabs[1]:
         else:
             st.dataframe(st.session_state.event_records)
 
-# Tab 3: Drop Management
-with tabs[2]:
+# Tab 4: Drop Management
+with tabs[3]:
     st.header("Drop Management")
     
     # First, select the team for which we're recording drops
@@ -648,10 +842,10 @@ with tabs[2]:
             day_options = [1, 2] if not using_reshuffled else [3, 4]
             day = st.selectbox("Day", options=day_options)
             
-            # Filter events for the selected day
-            if st.session_state.events_data is not None:
-                day_events = st.session_state.events_data[
-                    st.session_state.events_data['Day'] == day
+            # If we have a 4-day plan, use it to filter event options
+            if 'structured_four_day_plan' in st.session_state:
+                day_events = st.session_state.structured_four_day_plan[
+                    st.session_state.structured_four_day_plan['Day'] == day
                 ]
                 
                 if not day_events.empty:
@@ -660,18 +854,45 @@ with tabs[2]:
                         options=day_events['Event_Number'].unique()
                     )
                     
-                    # Filter further by event number
-                    event_options = day_events[
+                    # Get the event details for this day and event number
+                    event_details = day_events[
                         day_events['Event_Number'] == event_number
-                    ]['Event_Name'].unique()
+                    ]
                     
-                    event_name = st.selectbox("Event Name", options=event_options)
+                    event_name = st.selectbox(
+                        "Event Name", 
+                        options=event_details['Event_Name'].unique()
+                    )
                 else:
+                    # Fallback to regular event selection
                     event_number = st.selectbox("Event Number", options=[1, 2, 3])
                     event_name = st.text_input("Event Name")
             else:
-                event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                event_name = st.text_input("Event Name")
+                # Fallback to regular event selection
+                # Filter events for the selected day
+                if st.session_state.events_data is not None:
+                    day_events = st.session_state.events_data[
+                        st.session_state.events_data['Day'] == day
+                    ]
+                    
+                    if not day_events.empty:
+                        event_number = st.selectbox(
+                            "Event Number", 
+                            options=day_events['Event_Number'].unique()
+                        )
+                        
+                        # Filter further by event number
+                        event_options = day_events[
+                            day_events['Event_Number'] == event_number
+                        ]['Event_Name'].unique()
+                        
+                        event_name = st.selectbox("Event Name", options=event_options)
+                    else:
+                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                        event_name = st.text_input("Event Name")
+                else:
+                    event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                    event_name = st.text_input("Event Name")
             
             # Check if there's an event record for this team and event
             if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
@@ -754,8 +975,8 @@ with tabs[2]:
         else:
             st.dataframe(st.session_state.drop_data)
 
-# Tab 4: Team Reshuffling
-with tabs[3]:
+# Tab 5: Team Reshuffling
+with tabs[4]:
     st.header("Team Reshuffling After Day 2")
     
     # Check if we have data for Days 1 and 2
@@ -831,8 +1052,8 @@ with tabs[3]:
     else:
         st.warning("No event data available. Please record events for Days 1 and 2 first.")
 
-# Tab 5: Adjust Difficulty
-with tabs[4]:
+# Tab 6: Adjust Difficulty
+with tabs[5]:
     st.header("Adjust Difficulty for Days 3 and 4")
     
     # Check if teams have been reshuffled
@@ -1022,8 +1243,8 @@ with tabs[4]:
         href = f'<a href="data:file/csv;base64,{b64}" download="adjusted_events.csv">Download Adjusted Events CSV</a>'
         st.markdown(href, unsafe_allow_html=True)
 
-# Tab 6: Final Scores
-with tabs[5]:
+# Tab 7: Final Scores
+with tabs[6]:
     st.header("Final Difficulty Scores")
     
     if not st.session_state.event_records.empty:
@@ -1131,8 +1352,8 @@ with tabs[5]:
     else:
         st.warning("No event data available. Please record events first.")
 
-# Tab 7: Visualizations
-with tabs[6]:
+# Tab 8: Visualizations
+with tabs[7]:
     st.header("Visualizations")
     
     if not st.session_state.event_records.empty:
@@ -1297,8 +1518,8 @@ with tabs[6]:
     else:
         st.warning("No event data available for visualization. Please record events first.")
 
-# Tab 8: Predictive Analytics
-with tabs[7]:
+# Tab 9: Predictive Analytics
+with tabs[8]:
     st.header("Predictive Analytics")
     
     if st.session_state.reshuffled_teams is not None and st.session_state.events_data is not None:
@@ -1495,6 +1716,10 @@ if st.sidebar.button("Export All Data"):
         # Export reshuffled teams
         if st.session_state.reshuffled_teams is not None:
             zip_file.writestr('reshuffled_teams.csv', st.session_state.reshuffled_teams.to_csv(index=False))
+        
+        # Export 4-day plan
+        if st.session_state.structured_four_day_plan is not None:
+            zip_file.writestr('four_day_plan.csv', st.session_state.structured_four_day_plan.to_csv(index=False))
     
     # Provide download link
     buffer.seek(0)
