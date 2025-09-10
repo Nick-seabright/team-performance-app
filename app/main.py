@@ -41,7 +41,7 @@ def ensure_sample_data_exists():
     )
     
     # Check and create roster data
-    roster_path = os.path.join(data_dir, 'roster_data.csv')
+    roster_path = os.path.join(data_dir, 'sample_roster.csv')
     if not os.path.exists(roster_path):
         roster_df = create_default_roster()
         roster_df.to_csv(roster_path, index=False)
@@ -54,36 +54,6 @@ def ensure_sample_data_exists():
 
 # Call the function to ensure sample data exists
 ensure_sample_data_exists()
-
-roster_path = os.path.join(data_dir, 'roster_data.csv')
-if not os.path.exists(roster_path):
-    # Create a sample roster file
-    st.write(f"Creating sample roster file at {roster_path}")
-    try:
-        # Create the sample data
-        roster_data = []
-        candidate_types = ['OF', 'ADE']
-        
-        for team_num in range(1, 11):
-            for member_num in range(1, 19):
-                roster_number = 1000 + (team_num - 1) * 18 + member_num
-                candidate_type = candidate_types[member_num % 2]
-                prefix = "Officer" if candidate_type == 'OF' else "Candidate"
-                name = f"{prefix} {team_num}-{member_num}"
-                
-                roster_data.append({
-                    'Candidate_Name': name,
-                    'Roster_Number': roster_number,
-                    'Candidate_Type': candidate_type,
-                    'Initial_Team': f'Team {team_num}'
-                })
-        
-        # Create a DataFrame and save it
-        roster_df = pd.DataFrame(roster_data)
-        roster_df.to_csv(roster_path, index=False)
-        st.success(f"Created sample roster file with {len(roster_df)} participants")
-    except Exception as e:
-        st.error(f"Error creating sample roster file: {str(e)}")
 
 # Page configuration
 st.set_page_config(
@@ -262,42 +232,6 @@ def get_available_sessions():
     
     return sessions
 
-def create_default_roster():
-    """Create default roster data with 10 teams of 18 participants"""
-    try:
-        st.write("Creating default roster data directly")
-        roster_data = []
-        candidate_types = ['OF', 'ADE']
-        
-        for team_num in range(1, 11):
-            for member_num in range(1, 19):
-                roster_number = 1000 + (team_num - 1) * 18 + member_num
-                
-                # Alternate OF and ADE types
-                candidate_type = candidate_types[member_num % 2]
-                
-                # Create a unique name
-                if candidate_type == 'OF':
-                    prefix = "Officer"
-                else:
-                    prefix = "Candidate"
-                
-                name = f"{prefix} {team_num}-{member_num}"
-                
-                roster_data.append({
-                    'Candidate_Name': name,
-                    'Roster_Number': roster_number,
-                    'Candidate_Type': candidate_type,
-                    'Initial_Team': f'Team {team_num}'
-                })
-        
-        df = pd.DataFrame(roster_data)
-        st.write(f"Created default roster with shape: {df.shape}")
-        return df
-    except Exception as e:
-        st.error(f"Error creating default roster: {str(e)}")
-        return None
-
 # Title and description
 st.title("Team Performance Management and Analysis")
 st.markdown("Manage roster, equipment, events, and analyze team performance for a 4-day event.")
@@ -340,36 +274,12 @@ with tabs[0]:
     
     # Roster Upload
     st.subheader("Roster Upload")
+    
     use_default_roster = st.checkbox("Use default roster data", value=True)
     
     if use_default_roster:
-        # Try debug mode first
-        st.write("DEBUG MODE ON - Checking paths and file access")
-        from utils.data_processing import debug_file_paths
-        debug_file_paths()
-        
-        # Now try to load or create roster
-        try:
-            st.write("Attempting to load or create roster data...")
-            
-            # Try to load from file first
-            roster_data = load_roster_data()
-            
-            # If loading failed, create default data directly
-            if roster_data is None:
-                st.warning("Loading from file failed. Creating default roster data directly.")
-                roster_data = create_default_roster()
-            
-            # Assign to session state
-            if roster_data is not None:
-                st.session_state.roster_data = roster_data
-                st.success(f"Roster data ready with {len(roster_data)} participants.")
-            else:
-                st.error("Failed to create or load roster data.")
-        except Exception as e:
-            st.error(f"Error handling roster data: {str(e)}")
-            import traceback
-            st.write(traceback.format_exc())
+        st.session_state.roster_data = load_roster_data()
+        st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
     else:
         upload_method = st.radio("Choose upload method for roster:", ["CSV File", "SQL Server"])
         

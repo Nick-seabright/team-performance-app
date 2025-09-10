@@ -278,21 +278,8 @@ with tabs[0]:
     use_default_roster = st.checkbox("Use default roster data", value=True)
     
     if use_default_roster:
-        # Add debug information
-        st.write("Attempting to load default roster data...")
-        roster_data = load_roster_data()
-        
-        if roster_data is not None:
-            st.session_state.roster_data = roster_data
-            st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
-        else:
-            st.error("Failed to load roster data. Creating default roster directly.")
-            # Create roster data directly
-            st.session_state.roster_data = create_default_roster()
-            if st.session_state.roster_data is not None:
-                st.success(f"Default roster created with {len(st.session_state.roster_data)} participants.")
-            else:
-                st.error("Could not create default roster data. Please check logs.")
+        st.session_state.roster_data = load_roster_data()
+        st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
     else:
         upload_method = st.radio("Choose upload method for roster:", ["CSV File", "SQL Server"])
         

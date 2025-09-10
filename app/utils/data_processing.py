@@ -8,48 +8,33 @@ def load_roster_data(file=None):
     Load roster data from a CSV file or use default data
     """
     try:
-        # Debug info
-        st.write("Inside load_roster_data function")
-        debug_file_paths()
-        
         if file is None:
             # Use default data
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             default_path = os.path.join(script_dir, 'data', 'sample_roster.csv')
-            
-            st.write(f"Looking for roster at: {default_path}")
-            
             if os.path.exists(default_path):
-                st.write("Found sample_roster.csv, loading it")
-                try:
-                    df = pd.read_csv(default_path)
-                    st.write(f"Loaded roster with shape: {df.shape}")
-                    return df
-                except Exception as e:
-                    st.error(f"Error reading CSV: {str(e)}")
-                    return create_default_roster()
+                df = pd.read_csv(default_path)
             else:
-                st.write("sample_roster.csv not found, creating default roster")
-                return create_default_roster()
+                # Create sample data if file doesn't exist
+                df = create_default_roster()
+                # Save it for future use
+                df.to_csv(default_path, index=False)
         else:
-            st.write("Loading roster from uploaded file")
             df = pd.read_csv(file)
-            
-            # Ensure required columns exist
-            required_columns = ['Candidate_Name', 'Roster_Number', 'Candidate_Type', 'Initial_Team']
-            
-            # Check if all required columns exist
-            for col in required_columns:
-                if col not in df.columns:
-                    st.error(f"Required column '{col}' not found in the roster CSV file.")
-                    return None
-            
-            return df
+        
+        # Ensure required columns exist
+        required_columns = ['Candidate_Name', 'Roster_Number', 'Candidate_Type', 'Initial_Team']
+        
+        # Check if all required columns exist
+        for col in required_columns:
+            if col not in df.columns:
+                st.error(f"Required column '{col}' not found in the roster CSV file.")
+                return None
+        
+        return df
     except Exception as e:
-        st.error(f"Error in load_roster_data: {str(e)}")
-        import traceback
-        st.write(traceback.format_exc())
-        return create_default_roster()
+        st.error(f"Error loading roster data: {str(e)}")
+        return None
 
 def load_equipment_data(file=None):
     """
@@ -410,30 +395,3 @@ def minutes_to_mmss(minutes):
     except Exception as e:
         st.error(f"Error converting to mm:ss: {str(e)}")
         return "00:00"
-
-def debug_file_paths():
-    """Print debug information about file paths"""
-    try:
-        script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        st.write(f"Script directory: {script_dir}")
-        
-        data_dir = os.path.join(script_dir, 'data')
-        st.write(f"Data directory: {data_dir}")
-        st.write(f"Data directory exists: {os.path.exists(data_dir)}")
-        
-        if os.path.exists(data_dir):
-            files = os.listdir(data_dir)
-            st.write(f"Files in data directory: {files}")
-        
-        roster_path = os.path.join(data_dir, 'sample_roster.csv')
-        st.write(f"Roster path: {roster_path}")
-        st.write(f"Roster file exists: {os.path.exists(roster_path)}")
-        
-        equip_path = os.path.join(data_dir, 'event_equipment.csv')
-        st.write(f"Equipment path: {equip_path}")
-        st.write(f"Equipment file exists: {os.path.exists(equip_path)}")
-        
-        return True
-    except Exception as e:
-        st.error(f"Error in debug_file_paths: {str(e)}")
-        return False
