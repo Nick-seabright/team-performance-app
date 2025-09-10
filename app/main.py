@@ -553,70 +553,69 @@ with tabs[2]:
                 else:
                     day_options = [1, 2]
                     default_day = 1
-                
                 day = st.selectbox("Day", options=day_options, index=day_options.index(default_day))
                 
                 # If we have a 4-day plan, use it to filter event options
-                if 'structured_four_day_plan' in st.session_state and st.session_state.structured_four_day_plan is not None:
-                    day_events = st.session_state.structured_four_day_plan[
-                        st.session_state.structured_four_day_plan['Day'] == day
-                    ]
-                    
-                    if not day_events.empty:
-                        event_number = st.selectbox(
-                            "Event Number", 
-                            options=day_events['Event_Number'].unique(),
-                            key=f"event_num_{team_name}_{day}"
-                        )
+                has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
+                                    st.session_state.structured_four_day_plan is not None and
+                                    isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and
+                                    not st.session_state.structured_four_day_plan.empty)
+                
+                if has_four_day_plan:
+                    try:
+                        # Filter for events on the selected day
+                        day_events = st.session_state.structured_four_day_plan[
+                            st.session_state.structured_four_day_plan['Day'] == day
+                        ]
                         
-                        # Get the event details for this day and event number
-                        event_details = day_events[
-                            day_events['Event_Number'] == event_number
-                        ].iloc[0]
-                        
-                        event_name = event_details['Event_Name']
-                        
-                        # Display the event name (not selectable)
-                        st.write(f"Event Name: {event_name}")
-                        
-                        # Auto-fill other event details based on the 4-day plan
-                        selected_event = event_details
-                    else:
-                        # Fallback to regular event selection
-                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                        
-                        # Filter events based on day and event number from the original data
-                        if st.session_state.events_data is not None:
-                            filtered_events = st.session_state.events_data[
-                                (st.session_state.events_data['Day'] == day) & 
-                                (st.session_state.events_data['Event_Number'] == event_number)
-                            ]
+                        if not day_events.empty:
+                            event_number_options = day_events['Event_Number'].unique().tolist()
+                            event_number = st.selectbox(
+                                "Event Number",
+                                options=event_number_options,
+                                key=f"event_num_{team_name}_{day}"
+                            )
+                            
+                            # Get the event details for this day and event number
+                            filtered_events = day_events[day_events['Event_Number'] == event_number]
                             if not filtered_events.empty:
-                                event_name = st.selectbox(
-                                    "Event Name", 
-                                    options=filtered_events['Event_Name'].unique()
-                                )
-                                # Auto-fill other event details based on selection
-                                selected_event = filtered_events[filtered_events['Event_Name'] == event_name].iloc[0]
+                                event_details = filtered_events.iloc[0]
+                                event_name = event_details['Event_Name']
+                                # Display the event name (not selectable)
+                                st.write(f"Event Name: {event_name}")
+                                # Auto-fill other event details based on the 4-day plan
+                                selected_event = event_details
                             else:
-                                event_name = st.text_input("Event Name")
-                                selected_event = None
+                                st.warning(f"No events found for Day {day}, Event Number {event_number}")
+                                event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                                # Fallback to original event data
+                                original_event_data_fallback = True
                         else:
-                            event_name = st.text_input("Event Name")
-                            selected_event = None
+                            # Fallback to regular event selection
+                            st.warning(f"No events defined for Day {day} in the 4-day plan")
+                            event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                            # Fallback to original event data
+                            original_event_data_fallback = True
+                    except Exception as e:
+                        st.error(f"Error processing 4-day plan: {str(e)}")
+                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                        original_event_data_fallback = True
                 else:
-                    # Fallback to regular event selection
+                    # No 4-day plan, use regular event selection
                     event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                    
+                    original_event_data_fallback = True
+                
+                # Use original event data as fallback if needed
+                if 'original_event_data_fallback' in locals() and original_event_data_fallback:
                     # Filter events based on day and event number
                     if st.session_state.events_data is not None:
                         filtered_events = st.session_state.events_data[
-                            (st.session_state.events_data['Day'] == day) & 
+                            (st.session_state.events_data['Day'] == day) &
                             (st.session_state.events_data['Event_Number'] == event_number)
                         ]
                         if not filtered_events.empty:
                             event_name = st.selectbox(
-                                "Event Name", 
+                                "Event Name",
                                 options=filtered_events['Event_Name'].unique()
                             )
                             # Auto-fill other event details based on selection
