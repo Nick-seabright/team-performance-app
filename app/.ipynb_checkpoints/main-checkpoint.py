@@ -373,90 +373,62 @@ with tabs[1]:
         # Create columns for each day
         day_cols = st.columns(4)
         
-        # For each day, create checkboxes for event selection
+        # For each day, create a selection interface
         for day in range(1, 5):
             with day_cols[day-1]:
                 st.subheader(f"Day {day}")
                 st.markdown("<small>Note: If you select JUNK YARD, it must be the only event for that day.</small>", unsafe_allow_html=True)
                 
-                # Initialize or get current selections
+                # Initialize day events if not exists
                 if f"day_{day}_events" not in st.session_state:
                     st.session_state[f"day_{day}_events"] = []
                 
-                # Create a container for checkboxes
-                event_container = st.container()
+                # Display current selections
+                st.write(f"**Selected Events ({len(st.session_state[f'day_{day}_events'])}/3):**")
+                for i, event in enumerate(st.session_state[f"day_{day}_events"], 1):
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.write(f"{i}. {event}")
+                    with col2:
+                        if st.button("🗑️", key=f"remove_{day}_{event}"):
+                            st.session_state[f"day_{day}_events"].remove(event)
+                            st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
+                            st.experimental_rerun()
                 
-                # Create checkboxes for each event
-                selected_events = []
-                with event_container:
-                    # Clear button
-                    if st.button(f"Clear Day {day} Selection", key=f"clear_day_{day}"):
-                        st.session_state[f"day_{day}_events"] = []
-                        st.rerun()
-                    
-                    # Add events based on checkboxes
-                    st.write(f"**Selected ({len(st.session_state[f'day_{day}_events'])}/3):**")
-                    if st.session_state[f"day_{day}_events"]:
-                        for i, event in enumerate(st.session_state[f"day_{day}_events"], 1):
-                            st.write(f"{i}. {event}")
-                    else:
-                        st.write("No events selected yet")
-                    
-                    st.write("**Choose events:**")
-                    
-                    # Special handling for JUNK YARD
-                    junk_yard_selected = "JUNK YARD" in st.session_state[f"day_{day}_events"]
-                    junk_yard_checkbox = st.checkbox(
-                        "JUNK YARD (exclusive)", 
-                        value=junk_yard_selected,
-                        key=f"junk_yard_{day}"
-                    )
-                    
-                    if junk_yard_checkbox and not junk_yard_selected:
+                # Clear all button
+                if st.button("Clear All", key=f"clear_all_{day}"):
+                    st.session_state[f"day_{day}_events"] = []
+                    st.session_state.four_day_plan[day] = []
+                    st.experimental_rerun()
+                
+                # Add events section
+                st.write("**Add Events:**")
+                
+                # Special handling for JUNK YARD
+                if "JUNK YARD" in all_events:
+                    if st.button("Add JUNK YARD (exclusive)", key=f"add_junkyard_{day}"):
                         st.session_state[f"day_{day}_events"] = ["JUNK YARD"]
-                        st.rerun()
-                    elif not junk_yard_checkbox and junk_yard_selected:
-                        st.session_state[f"day_{day}_events"] = []
-                        st.rerun()
-                    
-                    # If JUNK YARD is selected, don't show other options
-                    if not junk_yard_selected:
-                        # Divide events into groups for easier selection
-                        event_groups = {}
-                        for event in all_events:
-                            if event == "JUNK YARD":
-                                continue
-                                
-                            # Group by first word
-                            group_name = event.split()[0]
-                            if group_name not in event_groups:
-                                event_groups[group_name] = []
-                            event_groups[group_name].append(event)
-                        
-                        # Display events by group
-                        for group_name, group_events in event_groups.items():
-                            with st.expander(f"{group_name} Events"):
-                                for event in group_events:
-                                    event_selected = event in st.session_state[f"day_{day}_events"]
-                                    event_checkbox = st.checkbox(
-                                        event, 
-                                        value=event_selected,
-                                        key=f"{event}_{day}"
-                                    )
-                                    
-                                    if event_checkbox and not event_selected:
-                                        # Only allow up to 3 selections
-                                        if len(st.session_state[f"day_{day}_events"]) < 3:
-                                            st.session_state[f"day_{day}_events"].append(event)
-                                            st.rerun()
-                                    elif not event_checkbox and event_selected:
-                                        st.session_state[f"day_{day}_events"].remove(event)
-                                        st.rerun()
+                        st.session_state.four_day_plan[day] = ["JUNK YARD"]
+                        st.experimental_rerun()
                 
-                # Update the four_day_plan with the current selections
+                # Add other events
+                # Only show if JUNK YARD is not selected or max not reached
+                if "JUNK YARD" not in st.session_state[f"day_{day}_events"] and len(st.session_state[f"day_{day}_events"]) < 3:
+                    # Available events (excluding already selected ones and JUNK YARD)
+                    available_events = [e for e in all_events if e != "JUNK YARD" and e not in st.session_state[f"day_{day}_events"]]
+                    
+                    if available_events:
+                        selected_event = st.selectbox("Select an event to add:", available_events, key=f"event_select_{day}")
+                        if st.button("Add Event", key=f"add_event_{day}"):
+                            st.session_state[f"day_{day}_events"].append(selected_event)
+                            st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
+                            st.experimental_rerun()
+                
+                # Update the main four_day_plan
                 st.session_state.four_day_plan[day] = st.session_state[f"day_{day}_events"]
         
         # Button to save the 4-day plan
+        st.markdown("---")
         if st.button("Save 4 Day Plan"):
             # Validate that each day has exactly 3 events (except for day with JUNK YARD)
             valid_plan = True
