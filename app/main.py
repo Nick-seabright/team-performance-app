@@ -557,11 +557,9 @@ with tabs[2]:
                 day = st.selectbox("Day", options=day_options, index=day_options.index(default_day))
                 
                 # If we have a 4-day plan, use it to filter event options
-                if 'structured_four_day_plan' in st.session_state:
+                if 'structured_four_day_plan' in st.session_state and st.session_state.structured_four_day_plan is not None:
                     day_events = st.session_state.structured_four_day_plan[
-                        (st.session_state.structured_four_day_plan is not None and 
-                         'Day' in st.session_state.structured_four_day_plan.columns and 
-                         st.session_state.structured_four_day_plan['Day'] == day)
+                        st.session_state.structured_four_day_plan['Day'] == day
                     ]
                     
                     if not day_events.empty:
