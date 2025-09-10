@@ -355,14 +355,15 @@ with tabs[0]:
 # Tab 2: Set 4 Day Plan
 with tabs[1]:
     st.header("Set 4 Day Plan")
-    
     # Check if event data is loaded
     if st.session_state.events_data is not None:
-        # Create a session state variable to store the 4-day plan if it doesn't exist
+        # Initialize four_day_plan in session state if not exists
         if 'four_day_plan' not in st.session_state:
-            st.session_state.four_day_plan = {}
-            for day in range(1, 5):
-                st.session_state.four_day_plan[day] = []
+            st.session_state.four_day_plan = {1: [], 2: [], 3: [], 4: []}
+        
+        # Initialize selected_events_dict in session state if not exists
+        if 'selected_events_dict' not in st.session_state:
+            st.session_state.selected_events_dict = {1: [], 2: [], 3: [], 4: []}
         
         # Display instructions
         st.markdown("""
@@ -379,37 +380,39 @@ with tabs[1]:
         # Create columns for each day
         day_cols = plan_container.columns(4)
         
+        # Define callback function to update selected events for a day
+        def update_selected_events(day, selected_events):
+            st.session_state.selected_events_dict[day] = selected_events
+            st.session_state.four_day_plan[day] = selected_events
+        
         # For each day, create a section to select 3 events
         for day in range(1, 5):
             with day_cols[day-1]:
                 st.subheader(f"Day {day}")
-
+                
                 # Add a note about JUNK YARD
                 st.markdown("""
                 <small>Note: If you select JUNK YARD, it must be the only event for that day.</small>
                 """, unsafe_allow_html=True)
                 
-                # If we already have selections for this day, use them as defaults
-                default_indices = []
-                if day in st.session_state.four_day_plan and st.session_state.four_day_plan[day]:
-                    for event in st.session_state.four_day_plan[day]:
-                        if event in all_events:
-                            default_indices.append(all_events.index(event))
+                # Use the stored selections from session state
+                default_selections = st.session_state.selected_events_dict.get(day, [])
                 
-                # MultiSelect to choose 3 events for this day
+                # MultiSelect to choose 3 events for this day with unique key
                 selected_events = st.multiselect(
                     f"Select 3 events for Day {day}",
                     options=all_events,
-                    default=[all_events[i] for i in default_indices if i < len(all_events)] if default_indices else [],
-                    key=f"day_{day}_events"
+                    default=default_selections,
+                    key=f"day_{day}_events_ms"
                 )
+                
+                # Store the selected events in session state
+                if selected_events != st.session_state.selected_events_dict.get(day, []):
+                    update_selected_events(day, selected_events)
                 
                 # Show warning if not exactly 3 events selected
                 if len(selected_events) != 3:
                     st.warning(f"Please select exactly 3 events for Day {day}. Currently selected: {len(selected_events)}")
-                
-                # Store the selected events in the session state
-                st.session_state.four_day_plan[day] = selected_events
                 
                 # Display the selected events
                 if selected_events:
