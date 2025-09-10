@@ -884,28 +884,40 @@ with tabs[3]:
             day = st.selectbox("Day", options=day_options)
             
             # If we have a 4-day plan, use it to filter event options
-            if 'structured_four_day_plan' in st.session_state:
-                day_events = st.session_state.structured_four_day_plan[
-                    st.session_state.structured_four_day_plan['Day'] == day
-                ]
-                
-                if not day_events.empty:
-                    event_number = st.selectbox(
-                        "Event Number", 
-                        options=day_events['Event_Number'].unique()
-                    )
-                    
-                    # Get the event details for this day and event number
-                    event_details = day_events[
-                        day_events['Event_Number'] == event_number
+            has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
+                                st.session_state.structured_four_day_plan is not None and
+                                isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and
+                                not st.session_state.structured_four_day_plan.empty)
+            
+            if has_four_day_plan:
+                try:
+                    day_events = st.session_state.structured_four_day_plan[
+                        st.session_state.structured_four_day_plan['Day'] == day
                     ]
-                    
-                    event_name = st.selectbox(
-                        "Event Name", 
-                        options=event_details['Event_Name'].unique()
-                    )
-                else:
-                    # Fallback to regular event selection
+                    if not day_events.empty:
+                        event_number = st.selectbox(
+                            "Event Number",
+                            options=day_events['Event_Number'].unique()
+                        )
+                        # Get the event details for this day and event number
+                        event_details = day_events[
+                            day_events['Event_Number'] == event_number
+                        ]
+                        if not event_details.empty:
+                            event_name = st.selectbox(
+                                "Event Name",
+                                options=event_details['Event_Name'].unique()
+                            )
+                        else:
+                            # Fallback to regular event selection
+                            event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                            event_name = st.text_input("Event Name")
+                    else:
+                        # Fallback to regular event selection
+                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                        event_name = st.text_input("Event Name")
+                except Exception as e:
+                    st.error(f"Error accessing 4-day plan: {str(e)}")
                     event_number = st.selectbox("Event Number", options=[1, 2, 3])
                     event_name = st.text_input("Event Name")
             else:
@@ -915,18 +927,15 @@ with tabs[3]:
                     day_events = st.session_state.events_data[
                         st.session_state.events_data['Day'] == day
                     ]
-                    
                     if not day_events.empty:
                         event_number = st.selectbox(
-                            "Event Number", 
+                            "Event Number",
                             options=day_events['Event_Number'].unique()
                         )
-                        
                         # Filter further by event number
                         event_options = day_events[
                             day_events['Event_Number'] == event_number
                         ]['Event_Name'].unique()
-                        
                         event_name = st.selectbox("Event Name", options=event_options)
                     else:
                         event_number = st.selectbox("Event Number", options=[1, 2, 3])
