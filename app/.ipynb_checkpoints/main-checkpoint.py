@@ -1137,69 +1137,96 @@ with tabs[2]:
                             if not current_participants.empty:
                                 st.write(f"{len(current_participants)} active participants:")
                                 
-                                # Create a two-column layout for participants
-                                part_cols = st.columns(2)
-                                for i, (_, participant) in enumerate(current_participants.iterrows()):
-                                    col_idx = i % 2
-                                    with part_cols[col_idx]:
-                                        # Create a horizontal layout for each participant
-                                        p_col1, p_col2 = st.columns([3, 1])
-                                        with p_col1:
-                                            st.write(f"{participant['Candidate_Name']} ({participant['Candidate_Type']})")
-                                        with p_col2:
-                                            # If the event has been recorded, we need the start time
-                                            start_time_val = ""
-                                            if not existing_record.empty:
-                                                start_time_val = existing_record.iloc[0]['Start_Time']
+                                # Create a simpler approach for adding drops without nested forms
+                                drop_cols = st.columns(2)
+                                
+                                # Create a drop record form key for this event
+                                drop_form_key = f"drop_form_{team_name}_{day}_{event_name}"
+                                
+                                # Create a selection for the participant to drop
+                                with st.form(drop_form_key):
+                                    # Select a participant to drop
+                                    drop_participant = st.selectbox(
+                                        "Select participant to mark as dropped:",
+                                        options=current_participants['Candidate_Name'].tolist(),
+                                        key=f"drop_participant_{team_name}_{day}_{event_name}"
+                                    )
+                                    
+                                    # Get the roster number for this participant
+                                    drop_roster_number = current_participants[
+                                        current_participants['Candidate_Name'] == drop_participant
+                                    ]['Roster_Number'].values[0]
+                                    
+                                    # Get current time for drop time if no time specified
+                                    current_time = datetime.now().strftime("%H:%M")
+                                    
+                                    # Default to event start time if available
+                                    start_time_val = ""
+                                    if not existing_record.empty:
+                                        start_time_val = existing_record.iloc[0]['Start_Time']
+                                    
+                                    # Enter drop time
+                                    drop_time = st.text_input(
+                                        "Drop Time (HH:MM)", 
+                                        value=start_time_val if start_time_val else current_time,
+                                        placeholder="e.g., 09:15",
+                                        key=f"drop_time_{team_name}_{day}_{event_name}"
+                                    )
+                                    
+                                    # Submit button
+                                    drop_submit = st.form_submit_button("Record Drop")
+                                    
+                                    if drop_submit:
+                                        if drop_time:
+                                            # Add to drop data
+                                            new_drop = {
+                                                'Team': team_name,
+                                                'Participant_Name': drop_participant,
+                                                'Roster_Number': drop_roster_number,
+                                                'Event_Name': event_name,
+                                                'Drop_Time': drop_time,
+                                                'Day': day,
+                                                'Event_Number': event_number
+                                            }
                                             
-                                            # Button to mark this participant as dropped
-                                            if st.button("Drop", key=f"drop_{day}_{event_name}_{participant['Roster_Number']}"):
-                                                # Create a drop record
-                                                # Get current time for drop time if no time specified
-                                                current_time = datetime.now().strftime("%H:%M")
+                                            # Create the drop_data DataFrame if it doesn't exist or is empty
+                                            if 'drop_data' not in st.session_state or st.session_state.drop_data.empty:
+                                                st.session_state.drop_data = pd.DataFrame([new_drop])
+                                            else:
+                                                # Check if this drop already exists
+                                                existing_drop = st.session_state.drop_data[
+                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                    (st.session_state.drop_data['Roster_Number'] == drop_roster_number) &
+                                                    (st.session_state.drop_data['Day'] == day) &
+                                                    (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                    (st.session_state.drop_data['Event_Name'] == event_name)
+                                                ]
                                                 
-                                                # Show a form to enter drop time
-                                                with st.form(f"drop_time_{day}_{event_name}_{participant['Roster_Number']}"):
-                                                    st.write(f"Enter drop time for {participant['Candidate_Name']}")
-                                                    
-                                                    # Default to event start time if available
-                                                    drop_time = st.text_input(
-                                                        "Drop Time (HH:MM)", 
-                                                        value=start_time_val,
-                                                        placeholder="e.g., 09:15"
-                                                    )
-                                                    
-                                                    confirm = st.form_submit_button("Confirm Drop")
-                                                    
-                                                    if confirm:
-                                                        if drop_time:
-                                                            # Add to drop data
-                                                            new_drop = {
-                                                                'Team': team_name,
-                                                                'Participant_Name': participant['Candidate_Name'],
-                                                                'Roster_Number': participant['Roster_Number'],
-                                                                'Event_Name': event_name,
-                                                                'Drop_Time': drop_time,
-                                                                'Day': day,
-                                                                'Event_Number': event_number
-                                                            }
-                                                            
-                                                            # Create the drop_data DataFrame if it doesn't exist
-                                                            if st.session_state.drop_data.empty:
-                                                                st.session_state.drop_data = pd.DataFrame([new_drop])
-                                                            else:
-                                                                st.session_state.drop_data = pd.concat([
-                                                                    st.session_state.drop_data,
-                                                                    pd.DataFrame([new_drop])
-                                                                ], ignore_index=True)
-                                                            
-                                                            st.success(f"{participant['Candidate_Name']} marked as dropped at {drop_time}")
-                                                            
-                                                            # Save session and refresh
-                                                            save_session_state()
-                                                            st.rerun()
-                                                        else:
-                                                            st.error("Please enter a valid drop time.")
+                                                if existing_drop.empty:
+                                                    # Add the new drop
+                                                    st.session_state.drop_data = pd.concat([
+                                                        st.session_state.drop_data,
+                                                        pd.DataFrame([new_drop])
+                                                    ], ignore_index=True)
+                                                else:
+                                                    # Update the existing drop
+                                                    st.session_state.drop_data.loc[existing_drop.index[0], 'Drop_Time'] = drop_time
+                                            
+                                            st.success(f"{drop_participant} marked as dropped at {drop_time}")
+                                            
+                                            # Save session
+                                            save_session_state()
+                                            
+                                            # Need to rerun to refresh the UI
+                                            st.rerun()
+                                        else:
+                                            st.error("Please enter a valid drop time.")
+                                
+                                # Display current active participants in a table format
+                                st.write("#### Active Participants List")
+                                active_display = current_participants[['Candidate_Name', 'Candidate_Type', 'Roster_Number']]
+                                active_display.columns = ['Participant', 'Type', 'Roster #']
+                                st.dataframe(active_display)
                             else:
                                 st.info("All participants have dropped from this event.")
                             
@@ -1216,29 +1243,44 @@ with tabs[2]:
                                 ]
                             
                             if not dropped_participants.empty:
-                                # Show the dropped participants with option to remove the drop
+                                # Create a table of dropped participants
                                 st.write(f"{len(dropped_participants)} participants have dropped:")
                                 
-                                # Create a nice display for dropped participants
-                                for _, drop in dropped_participants.iterrows():
-                                    col1, col2, col3 = st.columns([3, 2, 1])
-                                    with col1:
-                                        st.write(drop['Participant_Name'])
-                                    with col2:
-                                        st.write(f"Dropped at: {drop['Drop_Time']}")
-                                    with col3:
-                                        # Button to remove this drop
-                                        if st.button("Remove", key=f"remove_drop_{drop['Roster_Number']}"):
+                                # Create a dataframe for display
+                                drop_display = dropped_participants[['Participant_Name', 'Drop_Time']].copy()
+                                drop_display.columns = ['Participant', 'Drop Time']
+                                
+                                # Display the dataframe with a "Remove" button column
+                                st.dataframe(drop_display)
+                                
+                                # Add a form to remove drops
+                                with st.form("remove_drop_form"):
+                                    st.write("Remove a participant from the drop list:")
+                                    
+                                    # Select a participant to remove from drops
+                                    remove_options = dropped_participants['Participant_Name'].tolist()
+                                    if remove_options:
+                                        participant_to_remove = st.selectbox("Select participant:", options=remove_options)
+                                        
+                                        # Get the roster number
+                                        remove_roster_number = dropped_participants[
+                                            dropped_participants['Participant_Name'] == participant_to_remove
+                                        ]['Roster_Number'].values[0]
+                                        
+                                        # Submit button
+                                        remove_submit = st.form_submit_button("Remove Drop")
+                                        
+                                        if remove_submit:
                                             # Remove this drop from the drop_data
                                             st.session_state.drop_data = st.session_state.drop_data[
                                                 ~((st.session_state.drop_data['Team'] == team_name) &
                                                 (st.session_state.drop_data['Day'] == day) &
                                                 (st.session_state.drop_data['Event_Number'] == event_number) &
                                                 (st.session_state.drop_data['Event_Name'] == event_name) &
-                                                (st.session_state.drop_data['Roster_Number'] == drop['Roster_Number']))
+                                                (st.session_state.drop_data['Roster_Number'] == remove_roster_number))
                                             ]
                                             
-                                            st.success(f"Removed drop for {drop['Participant_Name']}")
+                                            st.success(f"Removed drop for {participant_to_remove}")
                                             
                                             # Save session and refresh
                                             save_session_state()
@@ -1442,7 +1484,6 @@ with tabs[2]:
             st.dataframe(st.session_state.event_records, use_container_width=True)
     else:
         st.info("No event records available yet. Use the form above to record events.")
-
 
 # Tab 4: Drop Management
 with tabs[3]:
