@@ -765,16 +765,25 @@ with tabs[2]:
         
         # Check if we already have a record for this event
         existing_record = None
-        if not st.session_state.event_records.empty:
+        if (not st.session_state.event_records.empty and 
+            'Team' in st.session_state.event_records.columns and
+            'Day' in st.session_state.event_records.columns and
+            'Event_Number' in st.session_state.event_records.columns and
+            'Event_Name' in st.session_state.event_records.columns):
+            
             existing_record = st.session_state.event_records[
                 (st.session_state.event_records['Team'] == team_name) &
                 (st.session_state.event_records['Day'] == day) &
                 (st.session_state.event_records['Event_Number'] == event_number) &
                 (st.session_state.event_records['Event_Name'] == event_name)
             ]
-        
-        if not existing_record.empty:
-            st.info("Existing record found. Editing will update the previous entry.")
+            
+            # Check if existing_record has any rows
+            if not existing_record.empty:
+                st.info("Existing record found. Editing will update the previous entry.")
+        else:
+            # Don't try to access .empty on None
+            pass
         
         # Equipment handling - outside the form
         if selected_event is not None:
