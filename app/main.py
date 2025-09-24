@@ -269,23 +269,37 @@ tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording", "Drop Manage
                 "Adjust Difficulty", "Final Scores", "Visualizations", "Predictive Analytics"])
 
 # Tab 1: Data Upload
+# Tab 1: Data Upload
 with tabs[0]:
     st.header("Upload Data")
     
     # Roster Upload
     st.subheader("Roster Upload")
-    
     use_default_roster = st.checkbox("Use default roster data", value=True)
     
     if use_default_roster:
-        st.session_state.roster_data = load_roster_data()
-        if st.session_state.roster_data is not None and len(st.session_state.roster_data) > 0:
-            st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
+        # Check if we need to load the data
+        if st.session_state.roster_data is None:
+            # Try to load from the data folder
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            data_dir = os.path.join(os.path.dirname(script_dir), 'data')
+            roster_path = os.path.join(data_dir, 'sample_roster.csv')
+            
+            if os.path.exists(roster_path):
+                try:
+                    st.session_state.roster_data = pd.read_csv(roster_path)
+                    st.success(f"Default roster loaded with {len(st.session_state.roster_data)} participants.")
+                except Exception as e:
+                    st.error(f"Error loading default roster: {str(e)}")
+                    # Fall back to generated data
+                    st.session_state.roster_data = load_roster_data()
+            else:
+                st.session_state.roster_data = load_roster_data()
+                st.success(f"Generated default roster with {len(st.session_state.roster_data)} participants.")
         else:
-            st.error("Failed to load default roster data. Check the logs for details.")
+            st.success(f"Using loaded roster with {len(st.session_state.roster_data)} participants.")
     else:
         upload_method = st.radio("Choose upload method for roster:", ["CSV File", "SQL Server"])
-        
         if upload_method == "CSV File":
             roster_file = st.file_uploader("Upload Roster CSV", type="csv")
             if roster_file:
@@ -300,21 +314,48 @@ with tabs[0]:
     
     # Event Equipment Data Upload
     st.subheader("Event Equipment Data")
-    
     use_default_event_data = st.checkbox("Use default event data", value=True)
     
     if use_default_event_data:
-        # Load both equipment and events data from the event equipment data
-        event_equipment_data = load_event_equip_data()
-        st.session_state.equipment_data = load_equipment_data()
-        st.session_state.events_data = load_events_data()
-        
-        st.success(f"Default event equipment data loaded.")
-        st.success(f"Generated equipment data with {len(st.session_state.equipment_data)} items.")
-        st.success(f"Generated events data with {len(st.session_state.events_data)} events.")
+        # Check if we need to load the data
+        if st.session_state.equipment_data is None or st.session_state.events_data is None:
+            # Try to load from the data folder
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            data_dir = os.path.join(os.path.dirname(script_dir), 'data')
+            event_equipment_path = os.path.join(data_dir, 'event_equipment.csv')
+            
+            if os.path.exists(event_equipment_path):
+                try:
+                    # Load the raw event equipment data directly
+                    event_equipment_data = pd.read_csv(event_equipment_path)
+                    
+                    # Process it to get equipment and events data
+                    st.session_state.equipment_data = load_equipment_data()
+                    st.session_state.events_data = load_events_data()
+                    
+                    st.success(f"Default event equipment data loaded.")
+                    st.success(f"Generated equipment data with {len(st.session_state.equipment_data)} items.")
+                    st.success(f"Generated events data with {len(st.session_state.events_data)} events.")
+                except Exception as e:
+                    st.error(f"Error loading default event data: {str(e)}")
+                    # Try to generate the data using the utility functions
+                    event_equipment_data = load_event_equip_data()
+                    st.session_state.equipment_data = load_equipment_data()
+                    st.session_state.events_data = load_events_data()
+            else:
+                # Load using the utility functions
+                event_equipment_data = load_event_equip_data()
+                st.session_state.equipment_data = load_equipment_data()
+                st.session_state.events_data = load_events_data()
+                
+                st.success(f"Generated default event equipment data.")
+                st.success(f"Generated equipment data with {len(st.session_state.equipment_data)} items.")
+                st.success(f"Generated events data with {len(st.session_state.events_data)} events.")
+        else:
+            st.success(f"Using loaded equipment data with {len(st.session_state.equipment_data)} items.")
+            st.success(f"Using loaded events data with {len(st.session_state.events_data)} events.")
     else:
         upload_method = st.radio("Choose upload method for event data:", ["CSV File", "SQL Server"])
-        
         if upload_method == "CSV File":
             event_equip_file = st.file_uploader("Upload Event Equipment CSV", type="csv")
             if event_equip_file:
@@ -322,7 +363,6 @@ with tabs[0]:
                 event_equipment_data = load_event_equip_data(event_equip_file)
                 st.session_state.equipment_data = load_equipment_data(event_equip_file)
                 st.session_state.events_data = load_events_data(event_equip_file)
-                
                 st.success(f"Event equipment data uploaded successfully.")
                 st.success(f"Generated equipment data with {len(st.session_state.equipment_data)} items.")
                 st.success(f"Generated events data with {len(st.session_state.events_data)} events.")
