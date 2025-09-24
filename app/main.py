@@ -245,24 +245,133 @@ new_session_name = st.sidebar.text_input(
     value=st.session_state.session_name
 )
 
-# Save current session
-if st.sidebar.button("Save Current Session"):
-    if save_session_state(new_session_name):
-        st.sidebar.success(f"Session '{new_session_name}' saved successfully!")
+# Create in-memory session data for download
+def create_downloadable_session():
+    # Create a zip file with all session data
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        # Add all DataFrames as CSV files
+        if st.session_state.roster_data is not None:
+            zip_file.writestr('roster_data.csv', st.session_state.roster_data.to_csv(index=False))
+        if st.session_state.equipment_data is not None:
+            zip_file.writestr('equipment_data.csv', st.session_state.equipment_data.to_csv(index=False))
+        if st.session_state.events_data is not None:
+            zip_file.writestr('events_data.csv', st.session_state.events_data.to_csv(index=False))
+        if not st.session_state.event_records.empty:
+            zip_file.writestr('event_records.csv', st.session_state.event_records.to_csv(index=False))
+        if not st.session_state.drop_data.empty:
+            zip_file.writestr('drop_data.csv', st.session_state.drop_data.to_csv(index=False))
+        if st.session_state.reshuffled_teams is not None:
+            zip_file.writestr('reshuffled_teams.csv', st.session_state.reshuffled_teams.to_csv(index=False))
+        if st.session_state.structured_four_day_plan is not None:
+            zip_file.writestr('four_day_plan.csv', st.session_state.structured_four_day_plan.to_csv(index=False))
+        
+        # Save the four_day_plan dictionary as JSON
+        zip_file.writestr('four_day_plan_dict.json', json.dumps(st.session_state.four_day_plan))
+        
+        # Save metadata
+        metadata = {
+            'session_name': new_session_name,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'has_roster': st.session_state.roster_data is not None,
+            'has_equipment': st.session_state.equipment_data is not None,
+            'has_events': st.session_state.events_data is not None,
+            'has_event_records': not st.session_state.event_records.empty,
+            'has_drop_data': not st.session_state.drop_data.empty,
+            'has_reshuffled_teams': st.session_state.reshuffled_teams is not None,
+            'has_four_day_plan': st.session_state.structured_four_day_plan is not None
+        }
+        zip_file.writestr('metadata.json', json.dumps(metadata))
+    
+    buffer.seek(0)
+    return buffer
 
-# Load a previous session
+# Download session button
+if st.sidebar.button("Download Session to Computer"):
+    session_data = create_downloadable_session()
+    b64 = base64.b64encode(session_data.read()).decode()
+    download_filename = f"{new_session_name.replace(' ', '_')}_session.zip"
+    href = f'<a href="data:application/zip;base64,{b64}" download="{download_filename}">Click to download {new_session_name} session</a>'
+    st.sidebar.markdown(href, unsafe_allow_html=True)
+    st.sidebar.success(f"Session '{new_session_name}' ready for download! Click the link above.")
+
+# Upload session from computer
+uploaded_session = st.sidebar.file_uploader("Upload Session from Computer", type="zip")
+if uploaded_session is not None:
+    try:
+        with zipfile.ZipFile(uploaded_session) as zip_ref:
+            # Extract and load all files
+            file_list = zip_ref.namelist()
+            
+            # Load roster data
+            if 'roster_data.csv' in file_list:
+                with zip_ref.open('roster_data.csv') as file:
+                    st.session_state.roster_data = pd.read_csv(file)
+            
+            # Load equipment data
+            if 'equipment_data.csv' in file_list:
+                with zip_ref.open('equipment_data.csv') as file:
+                    st.session_state.equipment_data = pd.read_csv(file)
+            
+            # Load events data
+            if 'events_data.csv' in file_list:
+                with zip_ref.open('events_data.csv') as file:
+                    st.session_state.events_data = pd.read_csv(file)
+            
+            # Load event records
+            if 'event_records.csv' in file_list:
+                with zip_ref.open('event_records.csv') as file:
+                    st.session_state.event_records = pd.read_csv(file)
+            
+            # Load drop data
+            if 'drop_data.csv' in file_list:
+                with zip_ref.open('drop_data.csv') as file:
+                    st.session_state.drop_data = pd.read_csv(file)
+            
+            # Load reshuffled teams
+            if 'reshuffled_teams.csv' in file_list:
+                with zip_ref.open('reshuffled_teams.csv') as file:
+                    st.session_state.reshuffled_teams = pd.read_csv(file)
+            
+            # Load four day plan
+            if 'four_day_plan.csv' in file_list:
+                with zip_ref.open('four_day_plan.csv') as file:
+                    st.session_state.structured_four_day_plan = pd.read_csv(file)
+            
+            # Load four day plan dictionary
+            if 'four_day_plan_dict.json' in file_list:
+                with zip_ref.open('four_day_plan_dict.json') as file:
+                    plan_dict = json.load(file)
+                    # Convert string keys to integers for the dictionary
+                    st.session_state.four_day_plan = {int(k): v for k, v in plan_dict.items()}
+            
+            # Load metadata
+            if 'metadata.json' in file_list:
+                with zip_ref.open('metadata.json') as file:
+                    metadata = json.load(file)
+                    st.session_state.session_name = metadata.get('session_name', 'uploaded_session')
+            
+            st.sidebar.success(f"Session '{st.session_state.session_name}' uploaded successfully!")
+    except Exception as e:
+        st.sidebar.error(f"Error uploading session: {str(e)}")
+
+# For backward compatibility, keep the server-side saving
+if st.sidebar.button("Save Current Session (Server)"):
+    if save_session_state(new_session_name):
+        st.sidebar.success(f"Session '{new_session_name}' saved to server!")
+
+# Also keep server-side loading for local development
 available_sessions = get_available_sessions()
 if available_sessions:
     session_to_load = st.sidebar.selectbox(
-        "Select Session to Load",
+        "Select Session to Load from Server",
         options=available_sessions
     )
-    
     if st.sidebar.button("Load Selected Session"):
         if load_session_state(session_to_load):
             st.sidebar.success(f"Session '{session_to_load}' loaded successfully!")
 else:
-    st.sidebar.info("No saved sessions found.")
+    st.sidebar.info("No saved sessions found on server.")
 
 # Create tabs for different sections
 tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording", "Drop Management", "Team Reshuffling",
