@@ -1114,8 +1114,23 @@ with tabs[2]:
                             # Display the current participants
                             st.write("#### Current Participants")
                             
-                            # Create a list of the current participants
-                            # We need to filter out any who have already dropped
+                            # Get participants who have dropped from any previous events
+                            previous_drops = []
+                            if not st.session_state.drop_data.empty:
+                                # Get all drops for this team up to this event
+                                prev_drops_query = (
+                                    (st.session_state.drop_data['Team'] == team_name) & 
+                                    (
+                                        # Same day but earlier event
+                                        ((st.session_state.drop_data['Day'] == day) & 
+                                         (st.session_state.drop_data['Event_Number'] < event_number)) |
+                                        # Earlier day
+                                        (st.session_state.drop_data['Day'] < day)
+                                    )
+                                )
+                                previous_drops = st.session_state.drop_data[prev_drops_query]['Roster_Number'].unique().tolist()
+                            
+                            # Get drops specific to this event
                             current_drops = []
                             if not st.session_state.drop_data.empty:
                                 current_drops = st.session_state.drop_data[
@@ -1125,20 +1140,20 @@ with tabs[2]:
                                     (st.session_state.drop_data['Event_Name'] == event_name)
                                 ]['Roster_Number'].tolist()
                             
+                            # Combine all drops
+                            all_drops = list(set(previous_drops + current_drops))
+                            
                             # Get the participant list from the team roster
                             current_participants = team_roster.copy()
-                            if current_drops:
-                                # Remove those who have already dropped
+                            if all_drops:
+                                # Remove those who have already dropped (in this or previous events)
                                 current_participants = current_participants[
-                                    ~current_participants['Roster_Number'].isin(current_drops)
+                                    ~current_participants['Roster_Number'].isin(all_drops)
                                 ]
                             
-                            # Show the active participants with "Mark as Drop" buttons
+                            # Show the active participants with drop option
                             if not current_participants.empty:
-                                st.write(f"{len(current_participants)} active participants:")
-                                
-                                # Create a simpler approach for adding drops without nested forms
-                                drop_cols = st.columns(2)
+                                st.write(f"{len(current_participants)} active participants for this event:")
                                 
                                 # Create a drop record form key for this event
                                 drop_form_key = f"drop_form_{team_name}_{day}_{event_name}"
@@ -1228,10 +1243,45 @@ with tabs[2]:
                                 active_display.columns = ['Participant', 'Type', 'Roster #']
                                 st.dataframe(active_display)
                             else:
-                                st.info("All participants have dropped from this event.")
+                                if previous_drops:
+                                    st.warning("All participants have dropped from previous events. No active participants for this event.")
+                                else:
+                                    st.info("All participants have dropped from this event.")
                             
-                            # Display the participants who have dropped
-                            st.write("#### Dropped Participants")
+                            # If there are participants who dropped in previous events, show them
+                            if previous_drops:
+                                st.write("#### Participants Dropped from Previous Events")
+                                
+                                # Get details of participants who dropped in previous events
+                                previous_dropped_participants = pd.DataFrame()
+                                if not st.session_state.drop_data.empty:
+                                    prev_drops_query = (
+                                        (st.session_state.drop_data['Team'] == team_name) & 
+                                        (
+                                            # Same day but earlier event
+                                            ((st.session_state.drop_data['Day'] == day) & 
+                                             (st.session_state.drop_data['Event_Number'] < event_number)) |
+                                            # Earlier day
+                                            (st.session_state.drop_data['Day'] < day)
+                                        )
+                                    )
+                                    previous_dropped_participants = st.session_state.drop_data[prev_drops_query]
+                                
+                                if not previous_dropped_participants.empty:
+                                    # Group by participant to show their last drop
+                                    participant_last_drops = previous_dropped_participants.sort_values(['Day', 'Event_Number'], ascending=False)
+                                    participant_last_drops = participant_last_drops.drop_duplicates('Roster_Number')
+                                    
+                                    # Create a nice display table
+                                    prev_drop_display = participant_last_drops[['Participant_Name', 'Day', 'Event_Number', 'Event_Name']].copy()
+                                    prev_drop_display.columns = ['Participant', 'Day', 'Event #', 'Dropped During']
+                                    prev_drop_display = prev_drop_display.sort_values(['Day', 'Event #'])
+                                    
+                                    st.dataframe(prev_drop_display)
+                                    st.info(f"These {len(prev_drop_display)} participants dropped from previous events and are not eligible for this event.")
+                            
+                            # Display the participants who have dropped in this specific event
+                            st.write("#### Dropped Participants (This Event)")
                             
                             dropped_participants = pd.DataFrame()
                             if not st.session_state.drop_data.empty:
@@ -1244,7 +1294,7 @@ with tabs[2]:
                             
                             if not dropped_participants.empty:
                                 # Create a table of dropped participants
-                                st.write(f"{len(dropped_participants)} participants have dropped:")
+                                st.write(f"{len(dropped_participants)} participants have dropped from this event:")
                                 
                                 # Create a dataframe for display
                                 drop_display = dropped_participants[['Participant_Name', 'Drop_Time']].copy()
@@ -1286,7 +1336,7 @@ with tabs[2]:
                                             save_session_state()
                                             st.rerun()
                             else:
-                                st.info("No participants have dropped from this event yet.")
+                                st.info("No participants have dropped from this specific event yet.")
                 
                 # After all event expanders, add a section to show completion status for this day
                 st.write("---")
