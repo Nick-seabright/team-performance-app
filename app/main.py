@@ -1466,11 +1466,25 @@ with tabs[2]:
                                     # Initial participants with default based on the freshly calculated value
                                     # Get the value from session state that was calculated at the expander level
                                     participants_key = f"{team_name}_{day}_{event_number}"
-                                    default_participants = st.session_state.adjusted_participants.get(participants_key, team_size)
+                                    default_participants = team_size  # Default fallback
                                     
-                                    # If we have an existing record, use that value instead
+                                    # If we have an existing record, use its value (which will be updated by the drop handlers)
                                     if not existing_record.empty:
                                         default_participants = existing_record.iloc[0]['Initial_Participants']
+                                    # Otherwise use the calculated value from the drops management tab
+                                    elif 'adjusted_participants' in st.session_state and participants_key in st.session_state.adjusted_participants:
+                                        default_participants = st.session_state.adjusted_participants.get(participants_key, team_size)
+                                    
+                                    # Force reload of existing record before setting the value to ensure most recent updates
+                                    if not st.session_state.event_records.empty:
+                                        refreshed_record = st.session_state.event_records[
+                                            (st.session_state.event_records['Team'] == team_name) &
+                                            (st.session_state.event_records['Day'] == day) &
+                                            (st.session_state.event_records['Event_Number'] == event_number) &
+                                            (st.session_state.event_records['Event_Name'] == event_name)
+                                        ]
+                                        if not refreshed_record.empty:
+                                            default_participants = refreshed_record.iloc[0]['Initial_Participants']
                                     
                                     initial_participants = st.number_input(
                                         "Initial Participants",
@@ -1478,6 +1492,12 @@ with tabs[2]:
                                         min_value=0,
                                         key=f"participants_{team_name}_{day}_{event_name}"
                                     )
+                                    
+                                    # Also display a note about where this value comes from
+                                    if not existing_record.empty:
+                                        st.info("Initial participants value is from the saved event record.")
+                                    elif 'adjusted_participants' in st.session_state and participants_key in st.session_state.adjusted_participants:
+                                        st.info("Initial participants value is adjusted based on previous drops.")
                                     
                                     # Get current drop count from drop data
                                     drops = 0
