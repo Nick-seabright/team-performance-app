@@ -673,7 +673,6 @@ with tabs[1]:
         st.warning("Please upload or select event data first to set up the 4-day plan.")
 
 # Tab 3: Event Recording
-# Tab 3: Event Recording
 with tabs[2]:
     st.header("Event Data Recording")
     
@@ -770,6 +769,42 @@ with tabs[2]:
                     event_number = event_idx + 1
                     event_details = event_details_by_name.get(event_name, {})
                     
+                    # Calculate adjusted initial participants based on previous events
+                    # This happens EVERY time the UI renders, for EACH event
+                    adjusted_initial_participants = team_size  # Default to full team size
+                    previous_drops = []
+                    
+                    # Get all drops for this team across all events up to this one
+                    if not st.session_state.drop_data.empty:
+                        all_team_drops = st.session_state.drop_data[
+                            st.session_state.drop_data['Team'] == team_name
+                        ]
+                        
+                        # Get drops from previous events (earlier days or earlier events on same day)
+                        prev_drops_query = (
+                            # Earlier day
+                            (all_team_drops['Day'] < day) |
+                            # Same day but earlier event
+                            ((all_team_drops['Day'] == day) & (all_team_drops['Event_Number'] < event_number))
+                        )
+                        previous_drops_df = all_team_drops[prev_drops_query]
+                        previous_drops = previous_drops_df['Roster_Number'].unique().tolist()
+                        
+                        # Calculate adjusted participants by removing those who dropped in previous events
+                        if previous_drops:
+                            # Get the participant list excluding previously dropped
+                            current_participants = team_roster.copy()
+                            current_participants = current_participants[
+                                ~current_participants['Roster_Number'].isin(previous_drops)
+                            ]
+                            adjusted_initial_participants = len(current_participants)
+                    
+                    # Store this value in session state for use in the form
+                    if 'adjusted_participants' not in st.session_state:
+                        st.session_state.adjusted_participants = {}
+                    participants_key = f"{team_name}_{day}_{event_number}"
+                    st.session_state.adjusted_participants[participants_key] = adjusted_initial_participants
+                    
                     # Check if we already have a record for this event
                     existing_record = pd.DataFrame()  # Default to empty DataFrame
                     
@@ -826,7 +861,6 @@ with tabs[2]:
                                     ]
                                 
                                 # Get drops from previous events (earlier days or earlier events on same day)
-                                previous_drops = []
                                 previous_drops_df = pd.DataFrame()
                                 if not all_team_drops.empty:
                                     # Previous events drops query
@@ -865,18 +899,6 @@ with tabs[2]:
                                     active_participants = active_participants[
                                         ~active_participants['Roster_Number'].isin(current_drops)
                                     ]
-                                
-                                # Update Initial Participants count based on previous drops
-                                # This automatically sets the initial count for this event
-                                adjusted_initial_participants = len(current_participants)
-                                
-                                # Store the adjusted initial participants count for use in the event data form
-                                if 'adjusted_participants' not in st.session_state:
-                                    st.session_state.adjusted_participants = {}
-                                    
-                                # Create a key for this specific team and event
-                                participants_key = f"{team_name}_{day}_{event_number}"
-                                st.session_state.adjusted_participants[participants_key] = adjusted_initial_participants
                                 
                                 # Show the adjusted initial participants count that will be used
                                 st.write(f"**Initial participants for this event: {adjusted_initial_participants}**")
@@ -1148,41 +1170,6 @@ with tabs[2]:
                         
                         # Event Data Tab
                         with event_data_tab:
-                            # Recalculate adjusted initial participants to ensure it's up-to-date
-                            all_team_drops = pd.DataFrame()
-                            previous_drops = []
-
-                            # Get all drops for this team across all events
-                            if not st.session_state.drop_data.empty:
-                                all_team_drops = st.session_state.drop_data[
-                                    st.session_state.drop_data['Team'] == team_name
-                                ]
-                                
-                                # Get drops from previous events (earlier days or earlier events on same day)
-                                prev_drops_query = (
-                                    # Earlier day
-                                    (all_team_drops['Day'] < day) |
-                                    # Same day but earlier event
-                                    ((all_team_drops['Day'] == day) & (all_team_drops['Event_Number'] < event_number))
-                                )
-                                previous_drops = all_team_drops[prev_drops_query]['Roster_Number'].unique().tolist()
-
-                            # Calculate adjusted initial participants based on previous drops
-                            default_participants = team_size  # Default to full team size
-                            if previous_drops:
-                                # Get the participant list excluding previously dropped
-                                current_participants = team_roster.copy()
-                                current_participants = current_participants[
-                                    ~current_participants['Roster_Number'].isin(previous_drops)
-                                ]
-                                default_participants = len(current_participants)
-
-                            # Store the freshly calculated value in session state
-                            if 'adjusted_participants' not in st.session_state:
-                                st.session_state.adjusted_participants = {}
-                            participants_key = f"{team_name}_{day}_{event_number}"
-                            st.session_state.adjusted_participants[participants_key] = default_participants
-                            
                             # Create a form for each event
                             with st.form(f"event_form_{team_name}_{day}_{event_number}"):
                                 col1, col2 = st.columns(2)
@@ -1321,6 +1308,10 @@ with tabs[2]:
                                     )
                                     
                                     # Initial participants with default based on the freshly calculated value
+                                    # Get the value from session state that was calculated at the expander level
+                                    participants_key = f"{team_name}_{day}_{event_number}"
+                                    default_participants = st.session_state.adjusted_participants.get(participants_key, team_size)
+                                    
                                     # If we have an existing record, use that value instead
                                     if not existing_record.empty:
                                         default_participants = existing_record.iloc[0]['Initial_Participants']
@@ -1665,7 +1656,7 @@ with tabs[2]:
             st.dataframe(st.session_state.event_records, use_container_width=True)
     else:
         st.info("No event records available yet. Use the form above to record events.")
-
+                
 # Tab 4: Drop Management
 with tabs[3]:
     st.header("Drop Management")
