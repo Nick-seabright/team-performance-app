@@ -957,6 +957,47 @@ with tabs[2]:
                                                                 # Update the existing drop
                                                                 st.session_state.drop_data.loc[existing_drop.index[0], 'Drop_Time'] = drop_time
                                                         
+                                                        # Update the corresponding event record if it exists
+                                                        if not st.session_state.event_records.empty:
+                                                            event_record = st.session_state.event_records[
+                                                                (st.session_state.event_records['Team'] == team_name) &
+                                                                (st.session_state.event_records['Day'] == day) &
+                                                                (st.session_state.event_records['Event_Number'] == event_number) &
+                                                                (st.session_state.event_records['Event_Name'] == event_name)
+                                                            ]
+                                                            
+                                                            if not event_record.empty:
+                                                                # Get the current drops count
+                                                                drops_query = (
+                                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                                    (st.session_state.drop_data['Day'] == day) &
+                                                                    (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                                    (st.session_state.drop_data['Event_Name'] == event_name)
+                                                                )
+                                                                drops_count = len(st.session_state.drop_data[drops_query])
+                                                                
+                                                                # Update the drops count in the event record
+                                                                st.session_state.event_records.loc[event_record.index[0], 'Drops'] = drops_count
+                                                                
+                                                                # Recalculate the actual difficulty with the new drops count
+                                                                record = event_record.iloc[0]
+                                                                temp_multiplier = record['Temperature_Multiplier']
+                                                                total_weight = record['Equipment_Weight'] * record['Number_of_Equipment']
+                                                                initial_participants = record['Initial_Participants']
+                                                                distance_km = record['Distance_km']
+                                                                time_actual_min = record['Time_Actual_Minutes']
+                                                                
+                                                                # Recalculate actual difficulty
+                                                                actual_difficulty = calculate_actual_difficulty(
+                                                                    temp_multiplier, total_weight, initial_participants,
+                                                                    distance_km, time_actual_min, drops_count,
+                                                                    st.session_state.drop_data[drops_query], day, event_number, event_name,
+                                                                    record['Start_Time']
+                                                                )
+                                                                
+                                                                # Update the actual difficulty
+                                                                st.session_state.event_records.loc[event_record.index[0], 'Actual_Difficulty'] = actual_difficulty
+                                                        
                                                         st.success(f"{drop_participant} marked as dropped at {drop_time}")
                                                         
                                                         # Save session
@@ -1048,6 +1089,47 @@ with tabs[2]:
                                                         (st.session_state.drop_data['Roster_Number'] == remove_roster_number))
                                                     ]
                                                     
+                                                    # Update the corresponding event record if it exists
+                                                    if not st.session_state.event_records.empty:
+                                                        event_record = st.session_state.event_records[
+                                                            (st.session_state.event_records['Team'] == team_name) &
+                                                            (st.session_state.event_records['Day'] == day) &
+                                                            (st.session_state.event_records['Event_Number'] == event_number) &
+                                                            (st.session_state.event_records['Event_Name'] == event_name)
+                                                        ]
+                                                        
+                                                        if not event_record.empty:
+                                                            # Recalculate the current drops count
+                                                            drops_query = (
+                                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                                (st.session_state.drop_data['Day'] == day) &
+                                                                (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                                (st.session_state.drop_data['Event_Name'] == event_name)
+                                                            )
+                                                            drops_count = len(st.session_state.drop_data[drops_query])
+                                                            
+                                                            # Update the drops count in the event record
+                                                            st.session_state.event_records.loc[event_record.index[0], 'Drops'] = drops_count
+                                                            
+                                                            # Recalculate the actual difficulty with the updated drops count
+                                                            record = event_record.iloc[0]
+                                                            temp_multiplier = record['Temperature_Multiplier']
+                                                            total_weight = record['Equipment_Weight'] * record['Number_of_Equipment']
+                                                            initial_participants = record['Initial_Participants']
+                                                            distance_km = record['Distance_km']
+                                                            time_actual_min = record['Time_Actual_Minutes']
+                                                            
+                                                            # Recalculate actual difficulty
+                                                            actual_difficulty = calculate_actual_difficulty(
+                                                                temp_multiplier, total_weight, initial_participants,
+                                                                distance_km, time_actual_min, drops_count,
+                                                                st.session_state.drop_data[drops_query], day, event_number, event_name,
+                                                                record['Start_Time']
+                                                            )
+                                                            
+                                                            # Update the actual difficulty
+                                                            st.session_state.event_records.loc[event_record.index[0], 'Actual_Difficulty'] = actual_difficulty
+                                                    
                                                     st.success(f"Removed drop for {participant_to_remove}")
                                                     
                                                     # Save session and refresh
@@ -1066,6 +1148,41 @@ with tabs[2]:
                         
                         # Event Data Tab
                         with event_data_tab:
+                            # Recalculate adjusted initial participants to ensure it's up-to-date
+                            all_team_drops = pd.DataFrame()
+                            previous_drops = []
+
+                            # Get all drops for this team across all events
+                            if not st.session_state.drop_data.empty:
+                                all_team_drops = st.session_state.drop_data[
+                                    st.session_state.drop_data['Team'] == team_name
+                                ]
+                                
+                                # Get drops from previous events (earlier days or earlier events on same day)
+                                prev_drops_query = (
+                                    # Earlier day
+                                    (all_team_drops['Day'] < day) |
+                                    # Same day but earlier event
+                                    ((all_team_drops['Day'] == day) & (all_team_drops['Event_Number'] < event_number))
+                                )
+                                previous_drops = all_team_drops[prev_drops_query]['Roster_Number'].unique().tolist()
+
+                            # Calculate adjusted initial participants based on previous drops
+                            default_participants = team_size  # Default to full team size
+                            if previous_drops:
+                                # Get the participant list excluding previously dropped
+                                current_participants = team_roster.copy()
+                                current_participants = current_participants[
+                                    ~current_participants['Roster_Number'].isin(previous_drops)
+                                ]
+                                default_participants = len(current_participants)
+
+                            # Store the freshly calculated value in session state
+                            if 'adjusted_participants' not in st.session_state:
+                                st.session_state.adjusted_participants = {}
+                            participants_key = f"{team_name}_{day}_{event_number}"
+                            st.session_state.adjusted_participants[participants_key] = default_participants
+                            
                             # Create a form for each event
                             with st.form(f"event_form_{team_name}_{day}_{event_number}"):
                                 col1, col2 = st.columns(2)
@@ -1203,15 +1320,9 @@ with tabs[2]:
                                         key=f"end_{team_name}_{day}_{event_name}"
                                     )
                                     
-                                    # Initial participants with default based on adjusted count
-                                    participants_key = f"{team_name}_{day}_{event_number}"
-                                    default_participants = team_size  # Default to full team size
-                                    
-                                    # Check if we have an adjusted count from drops in previous events
-                                    if 'adjusted_participants' in st.session_state and participants_key in st.session_state.adjusted_participants:
-                                        default_participants = st.session_state.adjusted_participants[participants_key]
-                                    elif not existing_record.empty:
-                                        # If we have an existing record, use that value
+                                    # Initial participants with default based on the freshly calculated value
+                                    # If we have an existing record, use that value instead
+                                    if not existing_record.empty:
                                         default_participants = existing_record.iloc[0]['Initial_Participants']
                                     
                                     initial_participants = st.number_input(
