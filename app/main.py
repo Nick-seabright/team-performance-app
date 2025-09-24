@@ -504,6 +504,7 @@ with tabs[0]:
 # Tab 2: Set 4 Day Plan
 with tabs[1]:
     st.header("Set 4 Day Plan")
+    
     # Check if event data is loaded
     if st.session_state.events_data is not None:
         # Initialize four_day_plan in session state if it doesn't exist
@@ -565,7 +566,6 @@ with tabs[1]:
                 if "JUNK YARD" not in st.session_state[f"day_{day}_events"] and len(st.session_state[f"day_{day}_events"]) < 3:
                     # Available events (excluding already selected ones and JUNK YARD)
                     available_events = [e for e in all_events if e != "JUNK YARD" and e not in st.session_state[f"day_{day}_events"]]
-                    
                     if available_events:
                         selected_event = st.selectbox("Select an event to add:", available_events, key=f"event_select_{day}")
                         if st.button("Add Event", key=f"add_event_{day}"):
@@ -604,16 +604,18 @@ with tabs[1]:
             if valid_plan:
                 # Create a structured 4-day plan
                 structured_plan = []
-                
                 for day in range(1, 5):
                     # If this is the JUNK YARD day, it's a special case
                     if day == junk_yard_day:
                         event_name = 'JUNK YARD'
-                        event_details = st.session_state.events_data[
+                        # Safely access event details
+                        junk_yard_data = st.session_state.events_data[
                             st.session_state.events_data['Event_Name'] == event_name
-                        ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
+                        ]
                         
-                        if event_details:
+                        if not junk_yard_data.empty:
+                            event_details = junk_yard_data.iloc[0].to_dict()
+                            
                             plan_entry = {
                                 'Day': day,
                                 'Event_Number': 1,  # Only event for this day
@@ -629,11 +631,14 @@ with tabs[1]:
                     else:
                         # Normal day with 3 events
                         for event_num, event_name in enumerate(st.session_state.four_day_plan[day], 1):
-                            event_details = st.session_state.events_data[
+                            # Safely access event details
+                            event_data = st.session_state.events_data[
                                 st.session_state.events_data['Event_Name'] == event_name
-                            ].iloc[0].to_dict() if event_name in st.session_state.events_data['Event_Name'].values else None
+                            ]
                             
-                            if event_details:
+                            if not event_data.empty:
+                                event_details = event_data.iloc[0].to_dict()
+                                
                                 plan_entry = {
                                     'Day': day,
                                     'Event_Number': event_num,
@@ -667,7 +672,6 @@ with tabs[1]:
     else:
         st.warning("Please upload or select event data first to set up the 4-day plan.")
 
-# Tab 3: Event Recording
 # Tab 3: Event Recording
 with tabs[2]:
     st.header("Event Data Recording")
