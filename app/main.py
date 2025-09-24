@@ -542,7 +542,7 @@ with tabs[2]:
         st.warning("Please upload roster data first to select a team.")
         selected_team = None
     
-    # Create a form for event data input
+    # Create event selection outside the form
     if selected_team is not None:
         # Determine if we're using original or reshuffled teams based on the selection
         using_reshuffled = "(Days 3-4)" in selected_team
@@ -552,181 +552,177 @@ with tabs[2]:
         else:
             team_name = selected_team
         
-        with st.form("event_data_form"):
-            col1, col2, col3 = st.columns(3)
+        # Set day options based on whether we're using reshuffled teams
+        if using_reshuffled:
+            day_options = [3, 4]
+            default_day = 3
+        else:
+            day_options = [1, 2]
+            default_day = 1
+        
+        day = st.selectbox("Day", options=day_options, index=day_options.index(default_day))
+        
+        # Get all possible events for this day from the 4-day plan or events data
+        has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
+                           st.session_state.structured_four_day_plan is not None and 
+                           isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and 
+                           not st.session_state.structured_four_day_plan.empty)
+        
+        if has_four_day_plan:
+            day_events = st.session_state.structured_four_day_plan[
+                st.session_state.structured_four_day_plan['Day'] == day
+            ]
+            available_events = day_events['Event_Name'].unique().tolist()
+        elif st.session_state.events_data is not None:
+            day_events = st.session_state.events_data[
+                st.session_state.events_data['Day'] == day
+            ]
+            available_events = day_events['Event_Name'].unique().tolist()
+        else:
+            available_events = []
+        
+        # Let user select event name first
+        event_name = st.selectbox("Event Name", options=available_events if available_events else [""])
+        
+        # Then let user select event number
+        event_number_options = [1, 2, 3]
+        event_number = st.selectbox("Event Number", options=event_number_options)
+        
+        # Retrieve event details based on selection
+        if event_name and event_name != "":
+            if has_four_day_plan:
+                filtered_events = st.session_state.structured_four_day_plan[
+                    (st.session_state.structured_four_day_plan['Day'] == day) & 
+                    (st.session_state.structured_four_day_plan['Event_Name'] == event_name)
+                ]
+            elif st.session_state.events_data is not None:
+                filtered_events = st.session_state.events_data[
+                    (st.session_state.events_data['Day'] == day) & 
+                    (st.session_state.events_data['Event_Name'] == event_name)
+                ]
+            else:
+                filtered_events = pd.DataFrame()
+                
+            if not filtered_events.empty:
+                selected_event = filtered_events.iloc[0]
+            else:
+                selected_event = None
+        else:
+            selected_event = None
+        
+        # Check if we already have a record for this event
+        existing_record = None
+        if not st.session_state.event_records.empty:
+            existing_record = st.session_state.event_records[
+                (st.session_state.event_records['Team'] == team_name) &
+                (st.session_state.event_records['Day'] == day) &
+                (st.session_state.event_records['Event_Number'] == event_number) &
+                (st.session_state.event_records['Event_Name'] == event_name)
+            ]
+        
+        if not existing_record.empty:
+            st.info("Existing record found. Editing will update the previous entry.")
+        
+        # Equipment handling - outside the form
+        if selected_event is not None:
+            st.subheader("Equipment")
             
-            with col1:
-                # Set day options based on whether we're using reshuffled teams
-                if using_reshuffled:
-                    day_options = [3, 4]
-                    default_day = 3
-                else:
-                    day_options = [1, 2]
-                    default_day = 1
-                
-                day = st.selectbox("Day", options=day_options, index=day_options.index(default_day))
-                
-                # Get all possible events for this day from the 4-day plan or events data
-                has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
-                                   st.session_state.structured_four_day_plan is not None and 
-                                   isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and 
-                                   not st.session_state.structured_four_day_plan.empty)
-                
-                if has_four_day_plan:
-                    day_events = st.session_state.structured_four_day_plan[
-                        st.session_state.structured_four_day_plan['Day'] == day
-                    ]
-                    available_events = day_events['Event_Name'].unique().tolist()
-                elif st.session_state.events_data is not None:
-                    day_events = st.session_state.events_data[
-                        st.session_state.events_data['Day'] == day
-                    ]
-                    available_events = day_events['Event_Name'].unique().tolist()
-                else:
-                    available_events = []
-                
-                # Let user select event name first
-                event_name = st.selectbox("Event Name", options=available_events if available_events else [""])
-                
-                # Then let user select event number
-                event_number_options = [1, 2, 3]
-                event_number = st.selectbox("Event Number", options=event_number_options)
-                
-                # Retrieve event details based on selection
-                if event_name and event_name != "":
-                    if has_four_day_plan:
-                        filtered_events = st.session_state.structured_four_day_plan[
-                            (st.session_state.structured_four_day_plan['Day'] == day) & 
-                            (st.session_state.structured_four_day_plan['Event_Name'] == event_name)
-                        ]
-                    elif st.session_state.events_data is not None:
-                        filtered_events = st.session_state.events_data[
-                            (st.session_state.events_data['Day'] == day) & 
-                            (st.session_state.events_data['Event_Name'] == event_name)
-                        ]
-                    else:
-                        filtered_events = pd.DataFrame()
-                        
-                    if not filtered_events.empty:
-                        selected_event = filtered_events.iloc[0]
-                    else:
-                        selected_event = None
-                else:
-                    selected_event = None
-                
-                # Check if we already have a record for this event
-                existing_record = None
-                if not st.session_state.event_records.empty:
-                    existing_record = st.session_state.event_records[
-                        (st.session_state.event_records['Team'] == team_name) &
-                        (st.session_state.event_records['Day'] == day) &
-                        (st.session_state.event_records['Event_Number'] == event_number) &
-                        (st.session_state.event_records['Event_Name'] == event_name)
-                    ]
-                
-                if not existing_record.empty:
-                    st.info("Existing record found. Editing will update the previous entry.")
-            
-            with col2:
-                if selected_event is not None:
-                    st.subheader("Equipment")
-                    
-                    # Get equipment details for this event
-                    event_equipment = None
-                    if st.session_state.events_data is not None:
-                        event_equipment = load_event_equip_data()
-                        if not event_equipment.empty and 'EventName' in event_equipment.columns:
-                            if event_name in event_equipment['EventName'].values:
-                                event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
-                                equipment_items = event_equipment[event_equipment['EventID'] == event_id]
-                            else:
-                                equipment_items = pd.DataFrame()
-                        else:
-                            equipment_items = pd.DataFrame()
+            # Get equipment details for this event
+            event_equipment = None
+            if st.session_state.events_data is not None:
+                event_equipment = load_event_equip_data()
+                if not event_equipment.empty and 'EventName' in event_equipment.columns:
+                    if event_name in event_equipment['EventName'].values:
+                        event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
+                        equipment_items = event_equipment[event_equipment['EventID'] == event_id]
                     else:
                         equipment_items = pd.DataFrame()
+                else:
+                    equipment_items = pd.DataFrame()
+            else:
+                equipment_items = pd.DataFrame()
+            
+            # Initialize equipment state for this event if not exists
+            equipment_key = f"equipment_{day}_{event_name}_{event_number}"
+            
+            if equipment_key not in st.session_state:
+                if not equipment_items.empty:
+                    st.session_state[equipment_key] = equipment_items.copy()
+                else:
+                    # Fallback to basic equipment from selected_event
+                    basic_equipment = pd.DataFrame([{
+                        'EquipmentName': selected_event.get('Equipment_Name', 'Generic Equipment'),
+                        'EquipWt': selected_event.get('Equipment_Weight', 0),
+                        'EquipNum': selected_event.get('Number_of_Equipment', 1),
+                        'AppRatio': 1,
+                        'AppRatioWT': selected_event.get('Equipment_Weight', 0) * selected_event.get('Number_of_Equipment', 1)
+                    }])
+                    st.session_state[equipment_key] = basic_equipment
+            
+            # Display and edit equipment items
+            equipment_list = st.session_state[equipment_key]
+            total_weight = 0
+            
+            # Create a container for equipment items
+            equip_container = st.container()
+            with equip_container:
+                for i, equip in enumerate(equipment_list.iterrows()):
+                    equip_idx = equip[0]
+                    equip = equip[1]
+                    col_name, col_weight, col_qty = st.columns([3, 1, 1])
+                    with col_name:
+                        st.text(equip['EquipmentName'])
+                    with col_weight:
+                        st.text(f"{equip['EquipWt']} lbs")
+                    with col_qty:
+                        new_qty = st.number_input(
+                            f"Qty",
+                            value=int(equip['EquipNum']),
+                            min_value=0,
+                            key=f"qty_{day}_{event_name}_{event_number}_{i}"
+                        )
+                        if new_qty != equip['EquipNum']:
+                            equipment_list.at[equip_idx, 'EquipNum'] = new_qty
+                            app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
+                            equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
                     
-                    # Initialize equipment state for this event if not exists
-                    equipment_key = f"equipment_{day}_{event_name}_{event_number}"
-                    
-                    if equipment_key not in st.session_state:
-                        if not equipment_items.empty:
-                            st.session_state[equipment_key] = equipment_items.copy()
-                        else:
-                            # Fallback to basic equipment from selected_event
-                            basic_equipment = pd.DataFrame([{
-                                'EquipmentName': selected_event.get('Equipment_Name', 'Generic Equipment'),
-                                'EquipWt': selected_event.get('Equipment_Weight', 0),
-                                'EquipNum': selected_event.get('Number_of_Equipment', 1),
-                                'AppRatio': 1,
-                                'AppRatioWT': selected_event.get('Equipment_Weight', 0) * selected_event.get('Number_of_Equipment', 1)
-                            }])
-                            st.session_state[equipment_key] = basic_equipment
-                    
-                    # Display and edit equipment items
-                    equipment_list = st.session_state[equipment_key]
-                    total_weight = 0
-                    
-                    # Create a container for equipment items
-                    equip_container = st.container()
-                    with equip_container:
-                        for i, equip in enumerate(equipment_list.iterrows()):
-                            equip_idx = equip[0]
-                            equip = equip[1]
-                            col_name, col_weight, col_qty = st.columns([3, 1, 1])
-                            with col_name:
-                                st.text(equip['EquipmentName'])
-                            with col_weight:
-                                st.text(f"{equip['EquipWt']} lbs")
-                            with col_qty:
-                                new_qty = st.number_input(
-                                    f"Qty",
-                                    value=int(equip['EquipNum']),
-                                    min_value=0,
-                                    key=f"qty_{day}_{event_name}_{event_number}_{i}"
-                                )
-                                if new_qty != equip['EquipNum']:
-                                    equipment_list.at[equip_idx, 'EquipNum'] = new_qty
-                                    app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
-                                    equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
-                            
-                            # Calculate total for this item
-                            item_total = equipment_list.at[equip_idx, 'AppRatioWT']
-                            total_weight += item_total
-                    
-                    st.markdown(f"**Total Adjusted Weight: {total_weight:.2f} lbs**")
-                    
-                    # Button to reset equipment to original
-                    if st.button("Reset Equipment", key=f"reset_equip_{day}_{event_name}"):
-                        if event_equipment is not None and not equipment_items.empty:
-                            st.session_state[equipment_key] = equipment_items.copy()
-                            st.success("Equipment reset to original configuration")
-                            st.rerun()
-                    
-                    # Other equipment related fields
+                    # Calculate total for this item
+                    item_total = equipment_list.at[equip_idx, 'AppRatioWT']
+                    total_weight += item_total
+            
+            st.markdown(f"**Total Adjusted Weight: {total_weight:.2f} lbs**")
+            
+            # Button to reset equipment to original - OUTSIDE the form
+            reset_equipment = st.button("Reset Equipment", key=f"reset_equip_{day}_{event_name}")
+            if reset_equipment:
+                if event_equipment is not None and not equipment_items.empty:
+                    st.session_state[equipment_key] = equipment_items.copy()
+                    st.success("Equipment reset to original configuration")
+                    st.rerun()
+        
+        # Now create the form for the rest of the data entry
+        with st.form("event_data_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if selected_event is not None:
                     distance_km = st.number_input(
                         "Distance (km)",
                         value=float(selected_event.get('Distance', 0))
                     )
+                    
+                    heat_category = st.selectbox("Heat Category", options=[1, 2, 3, 4, 5])
+                    
+                    time_limit_str = selected_event.get('Time_Limit', '00:00')
+                    # Display time limit for reference
+                    st.text(f"Time Limit: {time_limit_str}")
                 else:
                     st.warning("Please select a valid event")
-                    equipment_name = st.text_input("Equipment Name")
-                    equipment_weight = st.number_input("Equipment Weight (lbs)", min_value=0.0)
-                    num_equipment = st.number_input("Number of Equipment", min_value=1)
                     distance_km = st.number_input("Distance (km)", min_value=0.0)
-                    total_weight = equipment_weight * num_equipment
-            
-            with col3:
-                heat_category = st.selectbox("Heat Category", options=[1, 2, 3, 4, 5])
-                
-                if selected_event is not None:
-                    time_limit_str = selected_event.get('Time_Limit', '00:00')
-                else:
+                    heat_category = st.selectbox("Heat Category", options=[1, 2, 3, 4, 5])
                     time_limit_str = '00:00'
-                
-                # Display time limit for reference
-                st.text(f"Time Limit: {time_limit_str}")
-                
+            
+            with col2:
                 # Input start and end times in military format
                 start_time = st.text_input("Start Time (HH:MM)", placeholder="e.g., 08:30")
                 end_time = st.text_input("End Time (HH:MM)", placeholder="e.g., 11:45")
@@ -793,11 +789,11 @@ with tabs[2]:
                     if selected_event is not None:
                         total_weight = selected_event.get('Equipment_Weight', 0) * selected_event.get('Number_of_Equipment', 1)
                     else:
-                        total_weight = equipment_weight * num_equipment
+                        total_weight = 0  # Default if no equipment data
                     equipment_details = [{
-                        'Name': selected_event.get('Equipment_Name', 'Generic Equipment') if selected_event is not None else equipment_name,
-                        'Weight': selected_event.get('Equipment_Weight', 0) if selected_event is not None else equipment_weight,
-                        'Quantity': selected_event.get('Number_of_Equipment', 1) if selected_event is not None else num_equipment,
+                        'Name': selected_event.get('Equipment_Name', 'Generic Equipment') if selected_event is not None else "Generic Equipment",
+                        'Weight': selected_event.get('Equipment_Weight', 0) if selected_event is not None else 0,
+                        'Quantity': selected_event.get('Number_of_Equipment', 1) if selected_event is not None else 1,
                         'TotalWeight': total_weight
                     }]
                 
@@ -828,9 +824,9 @@ with tabs[2]:
                     'Day': day,
                     'Event_Number': event_number,
                     'Event_Name': event_name,
-                    'Equipment_Name': selected_event.get('Equipment_Name', equipment_name) if selected_event is not None else equipment_name,
-                    'Equipment_Weight': total_weight / (selected_event.get('Number_of_Equipment', num_equipment) if selected_event is not None else num_equipment),
-                    'Number_of_Equipment': selected_event.get('Number_of_Equipment', num_equipment) if selected_event is not None else num_equipment,
+                    'Equipment_Name': ', '.join([ed['Name'] for ed in equipment_details]),
+                    'Equipment_Weight': total_weight / sum([ed['Quantity'] for ed in equipment_details]) if sum([ed['Quantity'] for ed in equipment_details]) > 0 else 0,
+                    'Number_of_Equipment': sum([ed['Quantity'] for ed in equipment_details]),
                     'Distance_km': distance_km,
                     'Heat_Category': heat_category,
                     'Time_Limit': time_limit_str,
@@ -843,7 +839,6 @@ with tabs[2]:
                     'Initial_Difficulty': initial_difficulty,
                     'Actual_Difficulty': actual_difficulty,
                     'Temperature_Multiplier': temp_multiplier,
-                    'Total_Weight': total_weight,
                     'Equipment_Details': str(equipment_details)  # Store as string for DataFrame
                 }
                 
@@ -869,7 +864,7 @@ with tabs[2]:
                 
                 # Automatically save the session after recording data
                 save_session_state()
-                
+        
         # After the form, display team-specific recorded events
         if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
             st.subheader(f"Recorded Events for {team_name}")
@@ -880,37 +875,51 @@ with tabs[2]:
             ]
             
             if not team_records.empty:
-                # Display the team records, with option to view equipment details
-                if 'Equipment_Details' in team_records.columns:
-                    display_cols = [col for col in team_records.columns if col != 'Equipment_Details']
+                # Create a more detailed view with expandable sections for equipment details
+                for _, record in team_records.iterrows():
+                    with st.expander(f"Day {record['Day']}, Event {record['Event_Number']}: {record['Event_Name']}"):
+                        cols = st.columns(3)
+                        with cols[0]:
+                            st.write("**Basic Info:**")
+                            st.write(f"Time: {record['Start_Time']} - {record['End_Time']}")
+                            st.write(f"Duration: {record['Time_Actual']}")
+                            st.write(f"Distance: {record['Distance_km']} km")
+                        
+                        with cols[1]:
+                            st.write("**Equipment:**")
+                            st.write(f"Total Weight: {record['Equipment_Weight'] * record['Number_of_Equipment']:.2f} lbs")
+                            st.write(f"Items: {record['Number_of_Equipment']}")
+                            
+                            # Parse equipment details if available
+                            if 'Equipment_Details' in record and record['Equipment_Details']:
+                                try:
+                                    # Clean up the string representation for eval
+                                    equip_str = record['Equipment_Details'].replace("'", "\"")
+                                    import json
+                                    equip_details = json.loads(equip_str.replace("'", "\""))
+                                    for item in equip_details:
+                                        st.write(f"- {item['Name']}: {item['Quantity']} × {item['Weight']} lbs")
+                                except:
+                                    st.write(record['Equipment_Name'])
+                            else:
+                                st.write(record['Equipment_Name'])
+                        
+                        with cols[2]:
+                            st.write("**Performance:**")
+                            st.write(f"Initial Participants: {record['Initial_Participants']}")
+                            st.write(f"Drops: {record['Drops']}")
+                            st.write(f"Initial Difficulty: {record['Initial_Difficulty']:.2f}")
+                            st.write(f"Actual Difficulty: {record['Actual_Difficulty']:.2f}")
+                            
+                            # Calculate and display completion percentage
+                            completion_pct = ((record['Initial_Participants'] - record['Drops']) / record['Initial_Participants']) * 100 if record['Initial_Participants'] > 0 else 0
+                            st.write(f"Completion Rate: {completion_pct:.1f}%")
+                
+                # Also show a traditional table view
+                if st.checkbox("Show Table View", value=False):
+                    display_cols = ['Day', 'Event_Number', 'Event_Name', 'Distance_km', 
+                                   'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
                     st.dataframe(team_records[display_cols])
-                    
-                    # Add option to view detailed equipment breakdown for a specific event
-                    selected_event_idx = st.selectbox(
-                        "Select event to view equipment details",
-                        options=range(len(team_records)),
-                        format_func=lambda i: f"Day {team_records.iloc[i]['Day']} Event {team_records.iloc[i]['Event_Number']}: {team_records.iloc[i]['Event_Name']}"
-                    )
-                    
-                    if st.button("Show Equipment Details"):
-                        event_equip_details = team_records.iloc[selected_event_idx]['Equipment_Details']
-                        try:
-                            # Convert string representation back to list of dictionaries
-                            import ast
-                            equip_list = ast.literal_eval(event_equip_details)
-                            
-                            # Display as a table
-                            st.subheader("Equipment Breakdown")
-                            equip_df = pd.DataFrame(equip_list)
-                            st.dataframe(equip_df)
-                            
-                            # Calculate and display total weight
-                            total_weight = equip_df['TotalWeight'].sum() if 'TotalWeight' in equip_df.columns else 0
-                            st.write(f"**Total Weight: {total_weight:.2f} lbs**")
-                        except:
-                            st.error("Could not parse equipment details")
-                else:
-                    st.dataframe(team_records)
             else:
                 st.info(f"No events recorded yet for {team_name}.")
     
@@ -929,77 +938,264 @@ with tabs[2]:
                 default=all_teams
             )
             
-            # Create additional filters for days and event names
-            col1, col2 = st.columns(2)
-            with col1:
-                # Day filter
-                all_days = sorted(st.session_state.event_records['Day'].unique().tolist())
-                selected_days = st.multiselect(
-                    "Filter by Days",
-                    options=all_days,
-                    default=all_days
-                )
-            
-            with col2:
-                # Event filter
-                all_events = sorted(st.session_state.event_records['Event_Name'].unique().tolist())
-                selected_events = st.multiselect(
-                    "Filter by Events",
-                    options=all_events,
-                    default=[]
-                )
-            
-            # Apply filters
-            filtered_records = st.session_state.event_records.copy()
-            
+            # Filter event records by selected teams
             if selected_teams:
-                filtered_records = filtered_records[filtered_records['Team'].isin(selected_teams)]
-            
-            if selected_days:
-                filtered_records = filtered_records[filtered_records['Day'].isin(selected_days)]
-            
-            if selected_events:
-                filtered_records = filtered_records[filtered_records['Event_Name'].isin(selected_events)]
-            
-            # Display the filtered records
-            if 'Equipment_Details' in filtered_records.columns:
-                display_cols = [col for col in filtered_records.columns if col != 'Equipment_Details']
-                st.dataframe(filtered_records[display_cols])
-            else:
-                st.dataframe(filtered_records)
-            
-            # Add summary statistics
-            if not filtered_records.empty:
-                st.subheader("Summary Statistics")
-                col1, col2, col3 = st.columns(3)
+                filtered_records = st.session_state.event_records[
+                    st.session_state.event_records['Team'].isin(selected_teams)
+                ]
                 
+                # Add day and event type filters
+                col1, col2 = st.columns(2)
                 with col1:
-                    avg_initial_difficulty = filtered_records['Initial_Difficulty'].mean()
-                    avg_actual_difficulty = filtered_records['Actual_Difficulty'].mean()
-                    st.metric("Avg Initial Difficulty", f"{avg_initial_difficulty:.2f}")
-                    st.metric("Avg Actual Difficulty", f"{avg_actual_difficulty:.2f}")
-                
+                    days = st.multiselect(
+                        "Filter by Days",
+                        options=sorted(filtered_records['Day'].unique().tolist()),
+                        default=sorted(filtered_records['Day'].unique().tolist())
+                    )
                 with col2:
-                    total_drops = filtered_records['Drops'].sum()
-                    avg_drops_per_event = filtered_records['Drops'].mean()
-                    st.metric("Total Drops", f"{total_drops}")
-                    st.metric("Avg Drops per Event", f"{avg_drops_per_event:.2f}")
+                    events = st.multiselect(
+                        "Filter by Events",
+                        options=sorted(filtered_records['Event_Name'].unique().tolist()),
+                        default=sorted(filtered_records['Event_Name'].unique().tolist())
+                    )
                 
-                with col3:
-                    avg_distance = filtered_records['Distance_km'].mean()
-                    avg_weight = filtered_records['Total_Weight'].mean() if 'Total_Weight' in filtered_records.columns else 0
-                    st.metric("Avg Distance (km)", f"{avg_distance:.2f}")
-                    st.metric("Avg Total Weight (lbs)", f"{avg_weight:.2f}")
-            
-            # Option to download filtered data
-            if not filtered_records.empty:
-                csv = filtered_records.to_csv(index=False)
-                b64 = base64.b64encode(csv.encode()).decode()
-                href = f'<a href="data:file/csv;base64,{b64}" download="event_records_filtered.csv">Download Filtered Data as CSV</a>'
-                st.markdown(href, unsafe_allow_html=True)
+                # Apply additional filters
+                if days:
+                    filtered_records = filtered_records[filtered_records['Day'].isin(days)]
+                if events:
+                    filtered_records = filtered_records[filtered_records['Event_Name'].isin(events)]
+                
+                # Display the filtered data
+                if not filtered_records.empty:
+                    # Select which columns to display
+                    display_cols = ['Team', 'Day', 'Event_Number', 'Event_Name', 'Distance_km', 
+                                   'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
+                    st.dataframe(filtered_records[display_cols])
+                    
+                    # Add a download button for the filtered data
+                    csv = filtered_records.to_csv(index=False)
+                    b64 = base64.b64encode(csv.encode()).decode()
+                    href = f'<a href="data:file/csv;base64,{b64}" download="filtered_event_records.csv">Download Filtered Data as CSV</a>'
+                    st.markdown(href, unsafe_allow_html=True)
+                else:
+                    st.info("No records match the selected filters.")
+            else:
+                st.info("Please select at least one team to view records.")
         else:
             st.dataframe(st.session_state.event_records)
-                    
+
+# Tab 4: Drop Management
+with tabs[3]:
+    st.header("Drop Management")
+    
+    # First, select the team for which we're recording drops
+    if st.session_state.roster_data is not None:
+        # Get unique teams from roster data
+        team_options = st.session_state.roster_data['Initial_Team'].unique().tolist()
+        
+        # After Day 2, include reshuffled teams if available
+        if st.session_state.reshuffled_teams is not None:
+            # Get the days that have been recorded so far
+            recorded_days = []
+            if not st.session_state.event_records.empty:
+                recorded_days = st.session_state.event_records['Day'].unique().tolist()
+            
+            # If Days 1-2 have been recorded, include new teams for Days 3-4
+            if 1 in recorded_days and 2 in recorded_days:
+                new_team_options = st.session_state.reshuffled_teams['New_Team'].unique().tolist()
+                team_options.extend([f"{team} (Days 3-4)" for team in new_team_options])
+        
+        selected_team = st.selectbox("Select Team", options=team_options, key="drop_team_select")
+        
+        # Determine if we're using original or reshuffled teams
+        using_reshuffled = "(Days 3-4)" in selected_team
+        
+        # Extract the base team name
+        if using_reshuffled:
+            team_name = selected_team.replace(" (Days 3-4)", "")
+        else:
+            team_name = selected_team
+    else:
+        st.warning("Please upload roster data first to select a team.")
+        selected_team = None
+        team_name = None
+    
+    # Create a form for recording participant drops
+    if selected_team is not None:
+        with st.form("drop_data_form"):
+            # Get participants for the selected team
+            if using_reshuffled:
+                # Get participants from reshuffled teams
+                team_participants = st.session_state.reshuffled_teams[
+                    st.session_state.reshuffled_teams['New_Team'] == team_name
+                ]['Candidate_Name'].tolist()
+            else:
+                # Get participants from original roster
+                team_participants = st.session_state.roster_data[
+                    st.session_state.roster_data['Initial_Team'] == team_name
+                ]['Candidate_Name'].tolist()
+            
+            participant = st.selectbox(
+                "Participant", 
+                options=team_participants
+            )
+            
+            # Get roster number for the participant
+            if using_reshuffled:
+                roster_number = st.session_state.reshuffled_teams[
+                    st.session_state.reshuffled_teams['Candidate_Name'] == participant
+                ]['Roster_Number'].values[0]
+            else:
+                roster_number = st.session_state.roster_data[
+                    st.session_state.roster_data['Candidate_Name'] == participant
+                ]['Roster_Number'].values[0]
+            
+            # Select day based on team (Days 1-2 for original teams, Days 3-4 for reshuffled)
+            day_options = [1, 2] if not using_reshuffled else [3, 4]
+            day = st.selectbox("Day", options=day_options)
+            
+            # If we have a 4-day plan, use it to filter event options
+            has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
+                                st.session_state.structured_four_day_plan is not None and
+                                isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and
+                                not st.session_state.structured_four_day_plan.empty)
+            
+            if has_four_day_plan:
+                try:
+                    day_events = st.session_state.structured_four_day_plan[
+                        st.session_state.structured_four_day_plan['Day'] == day
+                    ]
+                    if not day_events.empty:
+                        event_number = st.selectbox(
+                            "Event Number",
+                            options=day_events['Event_Number'].unique()
+                        )
+                        # Get the event details for this day and event number
+                        event_details = day_events[
+                            day_events['Event_Number'] == event_number
+                        ]
+                        if not event_details.empty:
+                            event_name = st.selectbox(
+                                "Event Name",
+                                options=event_details['Event_Name'].unique()
+                            )
+                        else:
+                            # Fallback to regular event selection
+                            event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                            event_name = st.text_input("Event Name")
+                    else:
+                        # Fallback to regular event selection
+                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                        event_name = st.text_input("Event Name")
+                except Exception as e:
+                    st.error(f"Error accessing 4-day plan: {str(e)}")
+                    event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                    event_name = st.text_input("Event Name")
+            else:
+                # Fallback to regular event selection
+                # Filter events for the selected day
+                if st.session_state.events_data is not None:
+                    day_events = st.session_state.events_data[
+                        st.session_state.events_data['Day'] == day
+                    ]
+                    if not day_events.empty:
+                        event_number = st.selectbox(
+                            "Event Number",
+                            options=day_events['Event_Number'].unique()
+                        )
+                        # Filter further by event number
+                        event_options = day_events[
+                            day_events['Event_Number'] == event_number
+                        ]['Event_Name'].unique()
+                        event_name = st.selectbox("Event Name", options=event_options)
+                    else:
+                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                        event_name = st.text_input("Event Name")
+                else:
+                    event_number = st.selectbox("Event Number", options=[1, 2, 3])
+                    event_name = st.text_input("Event Name")
+            
+            # Check if there's an event record for this team and event
+            if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
+                team_event = st.session_state.event_records[
+                    (st.session_state.event_records['Team'] == team_name) &
+                    (st.session_state.event_records['Day'] == day) &
+                    (st.session_state.event_records['Event_Number'] == event_number) &
+                    (st.session_state.event_records['Event_Name'] == event_name)
+                ]
+                
+                if not team_event.empty:
+                    # Display event start time for reference
+                    st.text(f"Event Start Time: {team_event.iloc[0]['Start_Time']}")
+            
+            # Input drop time in military format
+            drop_time = st.text_input("Drop Time (HH:MM)", placeholder="e.g., 09:45")
+            
+            submit_drop = st.form_submit_button("Record Drop")
+            
+            if submit_drop:
+                # Add to drop data
+                new_drop = {
+                    'Team': team_name,
+                    'Participant_Name': participant,
+                    'Roster_Number': roster_number,
+                    'Event_Name': event_name,
+                    'Drop_Time': drop_time,
+                    'Day': day,
+                    'Event_Number': event_number
+                }
+                
+                st.session_state.drop_data = pd.concat([
+                    st.session_state.drop_data, 
+                    pd.DataFrame([new_drop])
+                ], ignore_index=True)
+                
+                st.success(f"Drop recorded successfully for {participant} from {team_name} during {event_name}")
+                
+                # Automatically save the session after recording data
+                save_session_state()
+        
+        # Display team-specific drop data
+        if not st.session_state.drop_data.empty and 'Team' in st.session_state.drop_data.columns:
+            st.subheader(f"Recorded Drops for {team_name}")
+            
+            # Filter drop data for the selected team
+            team_drops = st.session_state.drop_data[
+                st.session_state.drop_data['Team'] == team_name
+            ]
+            
+            if not team_drops.empty:
+                st.dataframe(team_drops)
+            else:
+                st.info(f"No drops recorded yet for {team_name}.")
+    
+    # Display all drop data with team filter
+    if not st.session_state.drop_data.empty:
+        st.subheader("All Recorded Drop Data")
+        
+        if 'Team' in st.session_state.drop_data.columns:
+            # Get unique teams
+            all_teams = st.session_state.drop_data['Team'].unique().tolist()
+            
+            # Create a multiselect to filter by team
+            selected_teams = st.multiselect(
+                "Filter by Teams",
+                options=all_teams,
+                default=all_teams,
+                key="drop_team_filter"
+            )
+            
+            # Filter drop data by selected teams
+            if selected_teams:
+                filtered_drops = st.session_state.drop_data[
+                    st.session_state.drop_data['Team'].isin(selected_teams)
+                ]
+                st.dataframe(filtered_drops)
+            else:
+                st.dataframe(st.session_state.drop_data)
+        else:
+            st.dataframe(st.session_state.drop_data)
+
 # Tab 5: Team Reshuffling
 with tabs[4]:
     st.header("Team Reshuffling After Day 2")
