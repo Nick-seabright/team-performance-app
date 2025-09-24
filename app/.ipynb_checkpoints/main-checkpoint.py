@@ -673,6 +673,7 @@ with tabs[1]:
         st.warning("Please upload or select event data first to set up the 4-day plan.")
 
 # Tab 3: Event Recording
+# Tab 3: Event Recording
 with tabs[2]:
     st.header("Event Data Recording")
     
@@ -690,405 +691,475 @@ with tabs[2]:
             if 1 in recorded_days and 2 in recorded_days:
                 new_team_options = st.session_state.reshuffled_teams['New_Team'].unique().tolist()
                 team_options.extend([f"{team} (Days 3-4)" for team in new_team_options])
+        
         selected_team = st.selectbox("Select Team", options=team_options)
-    else:
-        st.warning("Please upload roster data first to select a team.")
-        selected_team = None
-    
-    # Create event selection outside the form
-    if selected_team is not None:
+        
         # Determine if we're using original or reshuffled teams based on the selection
         using_reshuffled = "(Days 3-4)" in selected_team
         # Extract the base team name
         if using_reshuffled:
             team_name = selected_team.replace(" (Days 3-4)", "")
+            day_range = [3, 4]
+            day_label = "Days 3-4"
         else:
             team_name = selected_team
+            day_range = [1, 2]
+            day_label = "Days 1-2"
         
-        # Set day options based on whether we're using reshuffled teams
+        st.subheader(f"Recording Events for {team_name} - {day_label}")
+        
+        # Get team size for initial participants default
         if using_reshuffled:
-            day_options = [3, 4]
-            default_day = 3
+            # Get count from reshuffled teams
+            team_size = len(st.session_state.reshuffled_teams[
+                st.session_state.reshuffled_teams['New_Team'] == team_name
+            ])
         else:
-            day_options = [1, 2]
-            default_day = 1
+            # Get count from original roster
+            team_size = len(st.session_state.roster_data[
+                st.session_state.roster_data['Initial_Team'] == team_name
+            ])
         
-        day = st.selectbox("Day", options=day_options, index=day_options.index(default_day))
-        
-        # Get all possible events for this day from the 4-day plan or events data
+        # Check if we have a 4-day plan
         has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
                            st.session_state.structured_four_day_plan is not None and 
                            isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and 
                            not st.session_state.structured_four_day_plan.empty)
         
-        if has_four_day_plan:
-            day_events = st.session_state.structured_four_day_plan[
-                st.session_state.structured_four_day_plan['Day'] == day
-            ]
-            available_events = day_events['Event_Name'].unique().tolist()
-        elif st.session_state.events_data is not None:
-            day_events = st.session_state.events_data[
-                st.session_state.events_data['Day'] == day
-            ]
-            available_events = day_events['Event_Name'].unique().tolist()
-        else:
-            available_events = []
+        # Prepare heat category options
+        heat_categories = {
+            1: "Heat Category 1 (no multiplier)",
+            2: "Heat Category 2 (no multiplier)",
+            3: "Heat Category 3 (no multiplier)",
+            4: "Heat Category 4 (1.15x multiplier)",
+            5: "Heat Category 5 (1.3x multiplier)"
+        }
         
-        # Let user select event name first
-        event_name = st.selectbox("Event Name", options=available_events if available_events else [""])
+        # Create tabs for each day in the range
+        day_tabs = st.tabs([f"Day {day}" for day in day_range])
         
-        # Then let user select event number
-        event_number_options = [1, 2, 3]
-        event_number = st.selectbox("Event Number", options=event_number_options)
-        
-        # Retrieve event details based on selection
-        if event_name and event_name != "":
-            if has_four_day_plan:
-                filtered_events = st.session_state.structured_four_day_plan[
-                    (st.session_state.structured_four_day_plan['Day'] == day) & 
-                    (st.session_state.structured_four_day_plan['Event_Name'] == event_name)
-                ]
-            elif st.session_state.events_data is not None:
-                filtered_events = st.session_state.events_data[
-                    (st.session_state.events_data['Day'] == day) & 
-                    (st.session_state.events_data['Event_Name'] == event_name)
-                ]
-            else:
-                filtered_events = pd.DataFrame()
+        for i, day in enumerate(day_range):
+            with day_tabs[i]:
+                # Get events for this day from the 4-day plan
+                day_events = []
+                event_details_by_name = {}
                 
-            if not filtered_events.empty:
-                selected_event = filtered_events.iloc[0]
-            else:
-                selected_event = None
-        else:
-            selected_event = None
-        
-        # Check if we already have a record for this event
-        existing_record = None
-        if (not st.session_state.event_records.empty and 
-            'Team' in st.session_state.event_records.columns and
-            'Day' in st.session_state.event_records.columns and
-            'Event_Number' in st.session_state.event_records.columns and
-            'Event_Name' in st.session_state.event_records.columns):
-            
-            existing_record = st.session_state.event_records[
-                (st.session_state.event_records['Team'] == team_name) &
-                (st.session_state.event_records['Day'] == day) &
-                (st.session_state.event_records['Event_Number'] == event_number) &
-                (st.session_state.event_records['Event_Name'] == event_name)
-            ]
-            
-            # Check if existing_record has any rows
-            if not existing_record.empty:
-                st.info("Existing record found. Editing will update the previous entry.")
-        else:
-            # Don't try to access .empty on None
-            pass
-        
-        # Equipment handling - outside the form
-        if selected_event is not None:
-            st.subheader("Equipment")
-            
-            # Get equipment details for this event
-            event_equipment = None
-            if st.session_state.events_data is not None:
-                event_equipment = load_event_equip_data()
-                if not event_equipment.empty and 'EventName' in event_equipment.columns:
-                    if event_name in event_equipment['EventName'].values:
-                        event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
-                        equipment_items = event_equipment[event_equipment['EventID'] == event_id]
+                if has_four_day_plan:
+                    day_plan = st.session_state.structured_four_day_plan[
+                        st.session_state.structured_four_day_plan['Day'] == day
+                    ]
+                    if not day_plan.empty:
+                        # Sort by event number
+                        day_plan = day_plan.sort_values('Event_Number')
+                        day_events = day_plan['Event_Name'].tolist()
+                        
+                        # Create a mapping of event names to details
+                        for _, event in day_plan.iterrows():
+                            event_details_by_name[event['Event_Name']] = event
+                
+                if not day_events:
+                    st.warning(f"No events defined for Day {day} in the 4-day plan. Please set up the 4-day plan first.")
+                    continue
+                
+                st.write(f"### Events for Day {day}")
+                
+                # Create an expander for each event
+                for event_idx, event_name in enumerate(day_events):
+                    event_number = event_idx + 1
+                    event_details = event_details_by_name.get(event_name, {})
+                    
+                    # Check if we already have a record for this event
+                    existing_record = pd.DataFrame()  # Default to empty DataFrame
+                    
+                    if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
+                        existing_record = st.session_state.event_records[
+                            (st.session_state.event_records['Team'] == team_name) &
+                            (st.session_state.event_records['Day'] == day) &
+                            (st.session_state.event_records['Event_Number'] == event_number) &
+                            (st.session_state.event_records['Event_Name'] == event_name)
+                        ]
+                    
+                    # Set the expander title based on whether we have existing data
+                    if not existing_record.empty:
+                        expander_title = f"Event {event_number}: {event_name} ✓"
+                        expander_open = False  # Default closed if already recorded
                     else:
-                        equipment_items = pd.DataFrame()
-                else:
-                    equipment_items = pd.DataFrame()
-            else:
-                equipment_items = pd.DataFrame()
-            
-            # Initialize equipment state for this event if not exists
-            equipment_key = f"equipment_{day}_{event_name}_{event_number}"
-            
-            if equipment_key not in st.session_state:
-                if not equipment_items.empty:
-                    st.session_state[equipment_key] = equipment_items.copy()
-                else:
-                    # Fallback to basic equipment from selected_event
-                    basic_equipment = pd.DataFrame([{
-                        'EquipmentName': selected_event.get('Equipment_Name', 'Generic Equipment'),
-                        'EquipWt': selected_event.get('Equipment_Weight', 0),
-                        'EquipNum': selected_event.get('Number_of_Equipment', 1),
-                        'AppRatio': 1,
-                        'AppRatioWT': selected_event.get('Equipment_Weight', 0) * selected_event.get('Number_of_Equipment', 1)
-                    }])
-                    st.session_state[equipment_key] = basic_equipment
-            
-            # Display and edit equipment items
-            equipment_list = st.session_state[equipment_key]
-            total_weight = 0
-            
-            # Create a container for equipment items
-            equip_container = st.container()
-            with equip_container:
-                for i, equip in enumerate(equipment_list.iterrows()):
-                    equip_idx = equip[0]
-                    equip = equip[1]
-                    col_name, col_weight, col_qty = st.columns([3, 1, 1])
-                    with col_name:
-                        st.text(equip['EquipmentName'])
-                    with col_weight:
-                        st.text(f"{equip['EquipWt']} lbs")
-                    with col_qty:
-                        new_qty = st.number_input(
-                            f"Qty",
-                            value=int(equip['EquipNum']),
-                            min_value=0,
-                            key=f"qty_{day}_{event_name}_{event_number}_{i}"
-                        )
-                        if new_qty != equip['EquipNum']:
-                            equipment_list.at[equip_idx, 'EquipNum'] = new_qty
-                            app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
-                            equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
+                        expander_title = f"Event {event_number}: {event_name}"
+                        expander_open = True  # Default open if not recorded
                     
-                    # Calculate total for this item
-                    item_total = equipment_list.at[equip_idx, 'AppRatioWT']
-                    total_weight += item_total
-            
-            st.markdown(f"**Total Adjusted Weight: {total_weight:.2f} lbs**")
-            
-            # Button to reset equipment to original - OUTSIDE the form
-            reset_equipment = st.button("Reset Equipment", key=f"reset_equip_{day}_{event_name}")
-            if reset_equipment:
-                if event_equipment is not None and not equipment_items.empty:
-                    st.session_state[equipment_key] = equipment_items.copy()
-                    st.success("Equipment reset to original configuration")
-                    st.rerun()
-        
-        # Now create the form for the rest of the data entry
-        with st.form("event_data_form"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if selected_event is not None:
-                    distance_km = st.number_input(
-                        "Distance (km)",
-                        value=float(selected_event.get('Distance', 0))
-                    )
-                    
-                    heat_category = st.selectbox("Heat Category", options=[1, 2, 3, 4, 5])
-                    
-                    time_limit_str = selected_event.get('Time_Limit', '00:00')
-                    # Display time limit for reference
-                    st.text(f"Time Limit: {time_limit_str}")
-                else:
-                    st.warning("Please select a valid event")
-                    distance_km = st.number_input("Distance (km)", min_value=0.0)
-                    heat_category = st.selectbox("Heat Category", options=[1, 2, 3, 4, 5])
-                    time_limit_str = '00:00'
-            
-            with col2:
-                # Input start and end times in military format
-                start_time = st.text_input("Start Time (HH:MM)", placeholder="e.g., 08:30")
-                end_time = st.text_input("End Time (HH:MM)", placeholder="e.g., 11:45")
+                    with st.expander(expander_title, expanded=expander_open):
+                        # If we have existing data, show a summary
+                        if not existing_record.empty:
+                            record = existing_record.iloc[0]
+                            st.success("Event already recorded. You can update the data if needed.")
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.write("**Time:**", f"{record['Start_Time']} - {record['End_Time']}")
+                                st.write("**Duration:**", record['Time_Actual'])
+                            with col2:
+                                st.write("**Distance:**", f"{record['Distance_km']} km")
+                                st.write("**Heat Category:**", record['Heat_Category'])
+                            with col3:
+                                st.write("**Participants:**", record['Initial_Participants'])
+                                st.write("**Drops:**", record['Drops'])
+                                st.write("**Difficulty:**", f"{record['Actual_Difficulty']:.2f}")
+                        
+                        # Create a form for each event
+                        with st.form(f"event_form_{team_name}_{day}_{event_number}"):
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                # Display event details
+                                st.write(f"**Event Name:** {event_name}")
+                                time_limit = event_details.get('Time_Limit', '00:00')
+                                st.write(f"**Time Limit:** {time_limit}")
+                                
+                                # Get equipment details
+                                equipment_key = f"equipment_{day}_{event_name}_{event_number}"
+                                if equipment_key not in st.session_state:
+                                    # Initialize equipment from event details or 4-day plan
+                                    event_equipment = load_event_equip_data()
+                                    if not event_equipment.empty and 'EventName' in event_equipment.columns:
+                                        if event_name in event_equipment['EventName'].values:
+                                            event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
+                                            equipment_items = event_equipment[event_equipment['EventID'] == event_id]
+                                            st.session_state[equipment_key] = equipment_items.copy()
+                                        else:
+                                            # Fallback to basic equipment
+                                            basic_equipment = pd.DataFrame([{
+                                                'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
+                                                'EquipWt': event_details.get('Equipment_Weight', 0),
+                                                'EquipNum': event_details.get('Number_of_Equipment', 1),
+                                                'AppRatio': 1,
+                                                'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
+                                            }])
+                                            st.session_state[equipment_key] = basic_equipment
+                                    else:
+                                        # Fallback to basic equipment
+                                        basic_equipment = pd.DataFrame([{
+                                            'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
+                                            'EquipWt': event_details.get('Equipment_Weight', 0),
+                                            'EquipNum': event_details.get('Number_of_Equipment', 1),
+                                            'AppRatio': 1,
+                                            'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
+                                        }])
+                                        st.session_state[equipment_key] = basic_equipment
+                                
+                                # Display equipment list
+                                st.write("**Equipment:**")
+                                equipment_list = st.session_state[equipment_key]
+                                total_weight = 0
+                                
+                                for i, equip in enumerate(equipment_list.iterrows()):
+                                    equip_idx = equip[0]
+                                    equip = equip[1]
+                                    
+                                    col_name, col_weight, col_qty = st.columns([3, 1, 1])
+                                    with col_name:
+                                        st.text(equip['EquipmentName'])
+                                    with col_weight:
+                                        st.text(f"{equip['EquipWt']} lbs")
+                                    with col_qty:
+                                        # Set default qty from existing record if available
+                                        default_qty = int(equip['EquipNum'])
+                                        if not existing_record.empty:
+                                            # Try to parse equipment details from existing record
+                                            try:
+                                                equip_details = existing_record.iloc[0].get('Equipment_Details', '')
+                                                if equip_details:
+                                                    import json
+                                                    equip_details = json.loads(equip_details.replace("'", "\""))
+                                                    for item in equip_details:
+                                                        if item['Name'] == equip['EquipmentName']:
+                                                            default_qty = int(item['Quantity'])
+                                                            break
+                                            except:
+                                                pass
+                                        
+                                        new_qty = st.number_input(
+                                            f"Qty",
+                                            value=default_qty,
+                                            min_value=0,
+                                            key=f"qty_{team_name}_{day}_{event_name}_{event_number}_{i}"
+                                        )
+                                        
+                                        if new_qty != equip['EquipNum']:
+                                            equipment_list.at[equip_idx, 'EquipNum'] = new_qty
+                                            app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
+                                            equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
+                                    
+                                    # Calculate total for this item
+                                    item_total = equipment_list.at[equip_idx, 'AppRatioWT']
+                                    total_weight += item_total
+                                
+                                st.markdown(f"**Total Adjusted Weight: {total_weight:.2f} lbs**")
+                                
+                                # Distance input with default from existing record or event details
+                                default_distance = event_details.get('Distance', 0)
+                                if not existing_record.empty:
+                                    default_distance = existing_record.iloc[0]['Distance_km']
+                                
+                                distance_km = st.number_input(
+                                    "Distance (km)",
+                                    value=float(default_distance),
+                                    min_value=0.0,
+                                    key=f"distance_{team_name}_{day}_{event_name}"
+                                )
+                            
+                            with col2:
+                                # Heat category with default from existing record
+                                default_heat = 1
+                                if not existing_record.empty:
+                                    default_heat = existing_record.iloc[0]['Heat_Category']
+                                
+                                heat_category = st.selectbox(
+                                    "Heat Category",
+                                    options=list(heat_categories.keys()),
+                                    format_func=lambda x: heat_categories[x],
+                                    index=default_heat-1,
+                                    key=f"heat_{team_name}_{day}_{event_name}"
+                                )
+                                
+                                # Start and end times with defaults from existing record
+                                default_start = ""
+                                default_end = ""
+                                if not existing_record.empty:
+                                    default_start = existing_record.iloc[0]['Start_Time']
+                                    default_end = existing_record.iloc[0]['End_Time']
+                                
+                                start_time = st.text_input(
+                                    "Start Time (HH:MM)", 
+                                    value=default_start,
+                                    placeholder="e.g., 08:30",
+                                    key=f"start_{team_name}_{day}_{event_name}"
+                                )
+                                
+                                end_time = st.text_input(
+                                    "End Time (HH:MM)", 
+                                    value=default_end,
+                                    placeholder="e.g., 11:45",
+                                    key=f"end_{team_name}_{day}_{event_name}"
+                                )
+                                
+                                # Initial participants with default from team size or existing record
+                                default_participants = team_size
+                                if not existing_record.empty:
+                                    default_participants = existing_record.iloc[0]['Initial_Participants']
+                                
+                                initial_participants = st.number_input(
+                                    "Initial Participants",
+                                    value=int(default_participants),
+                                    min_value=0,
+                                    key=f"participants_{team_name}_{day}_{event_name}"
+                                )
+                                
+                                # Drops with default from existing record
+                                default_drops = 0
+                                if not existing_record.empty:
+                                    default_drops = existing_record.iloc[0]['Drops']
+                                
+                                drops = st.number_input(
+                                    "Drops",
+                                    value=int(default_drops),
+                                    min_value=0,
+                                    key=f"drops_{team_name}_{day}_{event_name}"
+                                )
+                                
+                                # Calculate button time duration for preview
+                                if start_time and end_time:
+                                    try:
+                                        time_actual_min = calculate_duration_minutes(start_time, end_time)
+                                        time_actual = minutes_to_mmss(time_actual_min)
+                                        st.write(f"**Calculated Duration:** {time_actual}")
+                                    except:
+                                        st.warning("Please enter valid times (HH:MM)")
+                            
+                            # Submit button for this event
+                            submit_button = st.form_submit_button(f"Save Event Data")
+                            
+                            if submit_button:
+                                if not start_time or not end_time:
+                                    st.error("Please enter both start and end times.")
+                                else:
+                                    try:
+                                        # Calculate actual time duration
+                                        time_actual_min = calculate_duration_minutes(start_time, end_time)
+                                        time_actual = minutes_to_mmss(time_actual_min)
+                                        
+                                        # Convert time limit to minutes for calculations
+                                        time_limit_min = time_str_to_minutes(time_limit)
+                                        
+                                        # Calculate temperature multiplier based on heat category
+                                        temp_multiplier = 1.0
+                                        if heat_category == 4:
+                                            temp_multiplier = 1.15
+                                        elif heat_category == 5:
+                                            temp_multiplier = 1.3
+                                        
+                                        # Use the modified equipment data
+                                        equipment_key = f"equipment_{day}_{event_name}_{event_number}"
+                                        if equipment_key in st.session_state:
+                                            equipment_data = st.session_state[equipment_key]
+                                            if 'AppRatioWT' in equipment_data.columns:
+                                                total_weight = equipment_data['AppRatioWT'].sum()
+                                            else:
+                                                # Fallback calculation
+                                                total_weight = sum(equipment_data['EquipWt'] * equipment_data['EquipNum'])
+                                            
+                                            # Store individual equipment details for reference
+                                            equipment_details = []
+                                            for _, equip in equipment_data.iterrows():
+                                                equipment_details.append({
+                                                    'Name': equip['EquipmentName'],
+                                                    'Weight': equip['EquipWt'],
+                                                    'Quantity': equip['EquipNum'],
+                                                    'AppRatio': equip['AppRatio'] if 'AppRatio' in equip else 1,
+                                                    'TotalWeight': equip['AppRatioWT'] if 'AppRatioWT' in equip else (equip['EquipWt'] * equip['EquipNum'])
+                                                })
+                                        else:
+                                            # Fallback to simple calculation
+                                            total_weight = event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
+                                            equipment_details = [{
+                                                'Name': event_details.get('Equipment_Name', 'Generic Equipment'),
+                                                'Weight': event_details.get('Equipment_Weight', 0),
+                                                'Quantity': event_details.get('Number_of_Equipment', 1),
+                                                'TotalWeight': total_weight
+                                            }]
+                                        
+                                        # Calculate difficulty scores
+                                        initial_difficulty = calculate_initial_difficulty(
+                                            temp_multiplier, total_weight, initial_participants,
+                                            distance_km, time_limit_min
+                                        )
+                                        
+                                        # Filter drop data for this specific team and event
+                                        team_drop_data = pd.DataFrame()
+                                        if not st.session_state.drop_data.empty and 'Team' in st.session_state.drop_data.columns:
+                                            team_drop_data = st.session_state.drop_data[
+                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                (st.session_state.drop_data['Day'] == day) &
+                                                (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                (st.session_state.drop_data['Event_Name'] == event_name)
+                                            ]
+                                        
+                                        actual_difficulty = calculate_actual_difficulty(
+                                            temp_multiplier, total_weight, initial_participants,
+                                            distance_km, time_actual_min, drops,
+                                            team_drop_data, day, event_number, event_name,
+                                            start_time
+                                        )
+                                        
+                                        # Create new record
+                                        new_record = {
+                                            'Team': team_name,
+                                            'Day': day,
+                                            'Event_Number': event_number,
+                                            'Event_Name': event_name,
+                                            'Equipment_Name': ', '.join([ed['Name'] for ed in equipment_details]),
+                                            'Equipment_Weight': total_weight / sum([ed['Quantity'] for ed in equipment_details]) if sum([ed['Quantity'] for ed in equipment_details]) > 0 else 0,
+                                            'Number_of_Equipment': sum([ed['Quantity'] for ed in equipment_details]),
+                                            'Distance_km': distance_km,
+                                            'Heat_Category': heat_category,
+                                            'Time_Limit': time_limit,
+                                            'Start_Time': start_time,
+                                            'End_Time': end_time,
+                                            'Time_Actual': time_actual,
+                                            'Time_Actual_Minutes': time_actual_min,
+                                            'Initial_Participants': initial_participants,
+                                            'Drops': drops,
+                                            'Initial_Difficulty': initial_difficulty,
+                                            'Actual_Difficulty': actual_difficulty,
+                                            'Temperature_Multiplier': temp_multiplier,
+                                            'Equipment_Details': str(equipment_details)  # Store as string for DataFrame
+                                        }
+                                        
+                                        # Check if we already have an entry for this team, day, event number, and event name
+                                        if not existing_record.empty:
+                                            # Update the existing record
+                                            st.session_state.event_records.loc[existing_record.index[0]] = new_record
+                                            st.success(f"Event data updated for {event_name}")
+                                        else:
+                                            # Add new record
+                                            st.session_state.event_records = pd.concat([
+                                                st.session_state.event_records,
+                                                pd.DataFrame([new_record])
+                                            ], ignore_index=True)
+                                            st.success(f"Event data recorded for {event_name}")
+                                        
+                                        # Automatically save the session after recording data
+                                        save_session_state()
+                                        
+                                        # Rerun to refresh the UI
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error saving event data: {str(e)}")
                 
-                # Get team size for initial participants default
-                if using_reshuffled:
-                    # Get count from reshuffled teams
-                    team_size = len(st.session_state.reshuffled_teams[
-                        st.session_state.reshuffled_teams['New_Team'] == team_name
-                    ])
-                else:
-                    # Get count from original roster
-                    team_size = len(st.session_state.roster_data[
-                        st.session_state.roster_data['Initial_Team'] == team_name
-                    ])
+                # After all event expanders, add a section to show completion status for this day
+                st.write("---")
+                st.write("### Day Completion Status")
                 
-                initial_participants = st.number_input(
-                    "Initial Participants",
-                    value=team_size,
-                    min_value=0
-                )
+                # Check how many events are recorded for this day and team
+                recorded_events = []
+                if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
+                    day_records = st.session_state.event_records[
+                        (st.session_state.event_records['Team'] == team_name) &
+                        (st.session_state.event_records['Day'] == day)
+                    ]
+                    recorded_events = day_records['Event_Name'].tolist()
                 
-                drops = st.number_input("Drops", min_value=0)
-            
-            submit_button = st.form_submit_button("Record Event Data")
-            
-            if submit_button:
-                # Calculate actual time duration from start and end times
-                time_actual_min = calculate_duration_minutes(start_time, end_time)
-                time_actual = minutes_to_mmss(time_actual_min)
-                
-                # Convert time limit to minutes for calculations
-                time_limit_min = time_str_to_minutes(time_limit_str)
-                
-                # Calculate temperature multiplier based on heat category
-                temp_multiplier = 1.0
-                if heat_category == 4:
-                    temp_multiplier = 1.15
-                elif heat_category == 5:
-                    temp_multiplier = 1.3
-                
-                # Use the modified equipment data
-                equipment_key = f"equipment_{day}_{event_name}_{event_number}"
-                if equipment_key in st.session_state:
-                    equipment_data = st.session_state[equipment_key]
-                    if 'AppRatioWT' in equipment_data.columns:
-                        total_weight = equipment_data['AppRatioWT'].sum()
+                # Display completion status for each event
+                for event_idx, event_name in enumerate(day_events):
+                    if event_name in recorded_events:
+                        st.write(f"✅ Event {event_idx+1}: {event_name} - **Recorded**")
                     else:
-                        # Fallback calculation
-                        total_weight = sum(equipment_data['EquipWt'] * equipment_data['EquipNum'])
-                    
-                    # Store individual equipment details for reference
-                    equipment_details = []
-                    for _, equip in equipment_data.iterrows():
-                        equipment_details.append({
-                            'Name': equip['EquipmentName'],
-                            'Weight': equip['EquipWt'],
-                            'Quantity': equip['EquipNum'],
-                            'AppRatio': equip['AppRatio'] if 'AppRatio' in equip else 1,
-                            'TotalWeight': equip['AppRatioWT'] if 'AppRatioWT' in equip else (equip['EquipWt'] * equip['EquipNum'])
-                        })
-                else:
-                    # Fallback to simple calculation
-                    if selected_event is not None:
-                        total_weight = selected_event.get('Equipment_Weight', 0) * selected_event.get('Number_of_Equipment', 1)
-                    else:
-                        total_weight = 0  # Default if no equipment data
-                    equipment_details = [{
-                        'Name': selected_event.get('Equipment_Name', 'Generic Equipment') if selected_event is not None else "Generic Equipment",
-                        'Weight': selected_event.get('Equipment_Weight', 0) if selected_event is not None else 0,
-                        'Quantity': selected_event.get('Number_of_Equipment', 1) if selected_event is not None else 1,
-                        'TotalWeight': total_weight
-                    }]
+                        st.write(f"❌ Event {event_idx+1}: {event_name} - **Not Recorded**")
                 
-                # Calculate difficulty scores
-                initial_difficulty = calculate_initial_difficulty(
-                    temp_multiplier, total_weight, initial_participants,
-                    distance_km, time_limit_min
-                )
-                
-                # Filter drop data for this specific team and event
-                team_drop_data = st.session_state.drop_data[
-                    (st.session_state.drop_data['Team'] == team_name) &
-                    (st.session_state.drop_data['Day'] == day) &
-                    (st.session_state.drop_data['Event_Number'] == event_number) &
-                    (st.session_state.drop_data['Event_Name'] == event_name)
-                ] if 'Team' in st.session_state.drop_data.columns else pd.DataFrame()
-                
-                actual_difficulty = calculate_actual_difficulty(
-                    temp_multiplier, total_weight, initial_participants,
-                    distance_km, time_actual_min, drops,
-                    team_drop_data, day, event_number, event_name,
-                    start_time
-                )
-                
-                # Create new record
-                new_record = {
-                    'Team': team_name,
-                    'Day': day,
-                    'Event_Number': event_number,
-                    'Event_Name': event_name,
-                    'Equipment_Name': ', '.join([ed['Name'] for ed in equipment_details]),
-                    'Equipment_Weight': total_weight / sum([ed['Quantity'] for ed in equipment_details]) if sum([ed['Quantity'] for ed in equipment_details]) > 0 else 0,
-                    'Number_of_Equipment': sum([ed['Quantity'] for ed in equipment_details]),
-                    'Distance_km': distance_km,
-                    'Heat_Category': heat_category,
-                    'Time_Limit': time_limit_str,
-                    'Start_Time': start_time,
-                    'End_Time': end_time,
-                    'Time_Actual': time_actual,
-                    'Time_Actual_Minutes': time_actual_min,
-                    'Initial_Participants': initial_participants,
-                    'Drops': drops,
-                    'Initial_Difficulty': initial_difficulty,
-                    'Actual_Difficulty': actual_difficulty,
-                    'Temperature_Multiplier': temp_multiplier,
-                    'Equipment_Details': str(equipment_details)  # Store as string for DataFrame
-                }
-                
-                # Check if we already have an entry for this team, day, event number, and event name
-                existing_record = st.session_state.event_records[
-                    (st.session_state.event_records['Team'] == team_name) &
-                    (st.session_state.event_records['Day'] == day) &
-                    (st.session_state.event_records['Event_Number'] == event_number) &
-                    (st.session_state.event_records['Event_Name'] == event_name)
-                ]
-                
-                if not existing_record.empty:
-                    # Update the existing record
-                    st.session_state.event_records.loc[existing_record.index[0]] = new_record
-                    st.success(f"Event data updated for {team_name}, Day {day}, Event {event_number}: {event_name}")
-                else:
-                    # Add new record
-                    st.session_state.event_records = pd.concat([
-                        st.session_state.event_records,
-                        pd.DataFrame([new_record])
-                    ], ignore_index=True)
-                    st.success(f"Event data recorded for {team_name}, Day {day}, Event {event_number}: {event_name}")
-                
-                # Automatically save the session after recording data
-                save_session_state()
+                # Show completion percentage
+                completion_pct = len(recorded_events) / len(day_events) * 100 if day_events else 0
+                st.progress(completion_pct / 100)
+                st.write(f"**Day {day} Completion: {completion_pct:.0f}%**")
         
-        # After the form, display team-specific recorded events
+        # After all day tabs, show a summary of all recorded events for this team
+        st.write("---")
+        st.subheader(f"Summary of All Recorded Events for {team_name}")
+        
         if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
-            st.subheader(f"Recorded Events for {team_name}")
-            
-            # Filter event records for the selected team
             team_records = st.session_state.event_records[
                 st.session_state.event_records['Team'] == team_name
             ]
             
             if not team_records.empty:
-                # Create a more detailed view with expandable sections for equipment details
+                # Create a summary table
+                summary_data = []
                 for _, record in team_records.iterrows():
-                    with st.expander(f"Day {record['Day']}, Event {record['Event_Number']}: {record['Event_Name']}"):
-                        cols = st.columns(3)
-                        with cols[0]:
-                            st.write("**Basic Info:**")
-                            st.write(f"Time: {record['Start_Time']} - {record['End_Time']}")
-                            st.write(f"Duration: {record['Time_Actual']}")
-                            st.write(f"Distance: {record['Distance_km']} km")
-                        
-                        with cols[1]:
-                            st.write("**Equipment:**")
-                            st.write(f"Total Weight: {record['Equipment_Weight'] * record['Number_of_Equipment']:.2f} lbs")
-                            st.write(f"Items: {record['Number_of_Equipment']}")
-                            
-                            # Parse equipment details if available
-                            if 'Equipment_Details' in record and record['Equipment_Details']:
-                                try:
-                                    # Clean up the string representation for eval
-                                    equip_str = record['Equipment_Details'].replace("'", "\"")
-                                    import json
-                                    equip_details = json.loads(equip_str.replace("'", "\""))
-                                    for item in equip_details:
-                                        st.write(f"- {item['Name']}: {item['Quantity']} × {item['Weight']} lbs")
-                                except:
-                                    st.write(record['Equipment_Name'])
-                            else:
-                                st.write(record['Equipment_Name'])
-                        
-                        with cols[2]:
-                            st.write("**Performance:**")
-                            st.write(f"Initial Participants: {record['Initial_Participants']}")
-                            st.write(f"Drops: {record['Drops']}")
-                            st.write(f"Initial Difficulty: {record['Initial_Difficulty']:.2f}")
-                            st.write(f"Actual Difficulty: {record['Actual_Difficulty']:.2f}")
-                            
-                            # Calculate and display completion percentage
-                            completion_pct = ((record['Initial_Participants'] - record['Drops']) / record['Initial_Participants']) * 100 if record['Initial_Participants'] > 0 else 0
-                            st.write(f"Completion Rate: {completion_pct:.1f}%")
+                    summary_data.append({
+                        'Day': record['Day'],
+                        'Event': f"Event {record['Event_Number']}: {record['Event_Name']}",
+                        'Time': f"{record['Start_Time']} - {record['End_Time']} ({record['Time_Actual']})",
+                        'Distance': f"{record['Distance_km']} km",
+                        'Heat': record['Heat_Category'],
+                        'Participants': f"{record['Initial_Participants'] - record['Drops']} / {record['Initial_Participants']}",
+                        'Difficulty': f"{record['Actual_Difficulty']:.2f}"
+                    })
                 
-                # Also show a traditional table view
-                if st.checkbox("Show Table View", value=False):
-                    display_cols = ['Day', 'Event_Number', 'Event_Name', 'Distance_km', 
-                                   'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
-                    st.dataframe(team_records[display_cols])
+                # Convert to DataFrame and display
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df.sort_values(['Day', 'Event']), use_container_width=True)
+                
+                # Add download button for team records
+                csv = team_records.to_csv(index=False)
+                b64 = base64.b64encode(csv.encode()).decode()
+                href = f'<a href="data:file/csv;base64,{b64}" download="{team_name}_event_records.csv">Download {team_name} Event Records</a>'
+                st.markdown(href, unsafe_allow_html=True)
             else:
                 st.info(f"No events recorded yet for {team_name}.")
     
-    # Display all recorded event data with team filter
+    # Display all recorded event data with team filter (outside the team selection)
+    st.write("---")
+    st.header("All Recorded Event Data")
+    
     if not st.session_state.event_records.empty:
-        st.subheader("All Recorded Event Data")
-        
         if 'Team' in st.session_state.event_records.columns:
             # Get unique teams
             all_teams = st.session_state.event_records['Team'].unique().tolist()
@@ -1132,7 +1203,7 @@ with tabs[2]:
                     # Select which columns to display
                     display_cols = ['Team', 'Day', 'Event_Number', 'Event_Name', 'Distance_km', 
                                    'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
-                    st.dataframe(filtered_records[display_cols])
+                    st.dataframe(filtered_records[display_cols], use_container_width=True)
                     
                     # Add a download button for the filtered data
                     csv = filtered_records.to_csv(index=False)
@@ -1144,7 +1215,9 @@ with tabs[2]:
             else:
                 st.info("Please select at least one team to view records.")
         else:
-            st.dataframe(st.session_state.event_records)
+            st.dataframe(st.session_state.event_records, use_container_width=True)
+    else:
+        st.info("No event records available yet. Use the form above to record events.")
 
 # Tab 4: Drop Management
 with tabs[3]:
