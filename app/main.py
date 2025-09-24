@@ -1066,7 +1066,46 @@ with tabs[2]:
                         
                         # Event Data Tab
                         with event_data_tab:
-                            # Create a form for each event
+                            # Ensure we're getting the latest adjusted participants count before showing the form
+                            participants_key = f"{team_name}_{day}_{event_number}"
+                            
+                            # Get all drops for this team across all events to recalculate drop count
+                            # This ensures we have the most up-to-date count
+                            all_team_drops = pd.DataFrame()
+                            previous_drops = []
+                            
+                            if not st.session_state.drop_data.empty:
+                                all_team_drops = st.session_state.drop_data[
+                                    st.session_state.drop_data['Team'] == team_name
+                                ]
+                                
+                                # Get drops from previous events
+                                prev_drops_query = (
+                                    # Earlier day
+                                    (all_team_drops['Day'] < day) |
+                                    # Same day but earlier event
+                                    ((all_team_drops['Day'] == day) & (all_team_drops['Event_Number'] < event_number))
+                                )
+                                previous_drops_df = all_team_drops[prev_drops_query]
+                                previous_drops = previous_drops_df['Roster_Number'].unique().tolist()
+                            
+                            # Calculate adjusted initial participants
+                            adjusted_initial_participants = team_size
+                            if previous_drops:
+                                # Get the participant list excluding previously dropped
+                                current_participants = team_roster.copy()
+                                current_participants = current_participants[
+                                    ~current_participants['Roster_Number'].isin(previous_drops)
+                                ]
+                                adjusted_initial_participants = len(current_participants)
+                            
+                            # Store the adjusted count in session state
+                            if 'adjusted_participants' not in st.session_state:
+                                st.session_state.adjusted_participants = {}
+                            
+                            st.session_state.adjusted_participants[participants_key] = adjusted_initial_participants
+                            
+                            # Now create the form with the updated values
                             with st.form(f"event_form_{team_name}_{day}_{event_number}"):
                                 col1, col2 = st.columns(2)
                                 
