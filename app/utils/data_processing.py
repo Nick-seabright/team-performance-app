@@ -12,7 +12,6 @@ def load_roster_data(file=None):
             # Use default data
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             default_path = os.path.join(script_dir, 'data', 'sample_roster.csv')
-            
             # Print debug information
             print(f"Looking for default roster at: {default_path}")
             print(f"Directory exists: {os.path.exists(os.path.dirname(default_path))}")
@@ -25,10 +24,8 @@ def load_roster_data(file=None):
                 # Create sample data if file doesn't exist
                 print("Creating default roster data")
                 df = create_default_roster()
-                
                 # Create directory if it doesn't exist
                 os.makedirs(os.path.dirname(default_path), exist_ok=True)
-                
                 # Save it for future use
                 try:
                     df.to_csv(default_path, index=False)
@@ -37,7 +34,7 @@ def load_roster_data(file=None):
                     print(f"Error saving default roster: {str(e)}")
         else:
             df = pd.read_csv(file)
-            
+        
         # Ensure required columns exist
         required_columns = ['Candidate_Name', 'Roster_Number', 'Candidate_Type', 'Initial_Team']
         # Check if all required columns exist
@@ -45,7 +42,7 @@ def load_roster_data(file=None):
             if col not in df.columns:
                 st.error(f"Required column '{col}' not found in the roster CSV file.")
                 return None
-                
+        
         return df
     except Exception as e:
         print(f"Error loading roster data: {str(e)}")
@@ -269,32 +266,40 @@ def create_default_event_equipment():
     return pd.DataFrame(data)
 
 def create_default_roster():
-    """Create default roster data with 10 teams of 18 participants"""
+    """Create default roster data or load it from data folder if it exists"""
+    # Check if roster data exists in the data folder
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_path = os.path.join(script_dir, 'data', 'sample_roster.csv')
+    
+    if os.path.exists(default_path):
+        # If the file exists, load it
+        try:
+            return pd.read_csv(default_path)
+        except Exception as e:
+            print(f"Error loading existing roster data: {str(e)}")
+            # Fall back to creating a new one if loading fails
+    
+    # Create default roster data with 10 teams of 18 participants
+    print("Creating new default roster data")
     roster_data = []
     candidate_types = ['OF', 'ADE']
-    
     for team_num in range(1, 11):
         for member_num in range(1, 19):
             roster_number = 1000 + (team_num - 1) * 18 + member_num
-            
             # Alternate OF and ADE types
             candidate_type = candidate_types[member_num % 2]
-            
             # Create a unique name
             if candidate_type == 'OF':
                 prefix = "Officer"
             else:
                 prefix = "Candidate"
-            
             name = f"{prefix} {team_num}-{member_num}"
-            
             roster_data.append({
                 'Candidate_Name': name,
                 'Roster_Number': roster_number,
                 'Candidate_Type': candidate_type,
                 'Initial_Team': f'Team {team_num}'
             })
-    
     return pd.DataFrame(roster_data)
 
 def time_str_to_minutes(time_str):
@@ -314,6 +319,29 @@ def time_str_to_minutes(time_str):
     except Exception as e:
         st.error(f"Error converting time: {str(e)}")
         return 0
+
+def ensure_sample_data_exists():
+    """Create sample data files if they don't exist"""
+    from utils.data_processing import (
+        create_default_roster, create_default_event_equipment
+    )
+    # Check and create roster data
+    roster_path = os.path.join(data_dir, 'sample_roster.csv')
+    if not os.path.exists(roster_path):
+        roster_df = create_default_roster()
+        roster_df.to_csv(roster_path, index=False)
+        print(f"Created sample roster data at {roster_path}")
+    else:
+        print(f"Sample roster data already exists at {roster_path}")
+    
+    # Check and create event equipment data
+    event_equipment_path = os.path.join(data_dir, 'event_equipment.csv')
+    if not os.path.exists(event_equipment_path):
+        event_equipment_df = create_default_event_equipment()
+        event_equipment_df.to_csv(event_equipment_path, index=False)
+        print(f"Created sample event equipment data at {event_equipment_path}")
+    else:
+        print(f"Sample event equipment data already exists at {event_equipment_path}")
 
 def minutes_to_time_str(minutes):
     """
