@@ -2207,735 +2207,467 @@ with tabs[4]:
         st.warning("No event data available. Please record events for Days 1 and 2 first.")
 
 # Tab 6: Adjust Difficulty
+# Tab 6: Adjust Difficulty
 with tabs[5]:
-    st.header("Adjust Difficulty for Days 3 and 4")
+    st.header("Adjust Difficulty for Days 3-4")
     
     # Check if teams have been reshuffled
     if st.session_state.reshuffled_teams is not None and not st.session_state.event_records.empty:
-        st.subheader("Calculate Target Difficulty Scores")
+        st.subheader("Team Balance Analysis")
         
-        # Get the average difficulty scores from Days 1 and 2
-        days_1_2_data = st.session_state.event_records[
-            st.session_state.event_records['Day'].isin([1, 2])
-        ]
-        avg_difficulty = days_1_2_data['Actual_Difficulty'].mean()
-        st.write(f"Average Difficulty Score from Days 1 and 2: {avg_difficulty:.2f}")
+        # Get the data we need
+        reshuffled_teams_df = st.session_state.reshuffled_teams
+        event_records_df = st.session_state.event_records
+        days_1_2_data = event_records_df[event_records_df['Day'].isin([1, 2])]
         
-        # Get all teams for Days 3-4
-        reshuffled_teams = []
-        if st.session_state.reshuffled_teams is not None:
-            reshuffled_teams = st.session_state.reshuffled_teams['New_Team'].unique().tolist()
+        # Step 1: Analyze the reshuffled teams
+        st.write("### Team Composition Analysis")
         
-        # Create two columns for global vs. team-specific adjustments
-        adjustment_type = st.radio(
-            "Adjustment Type",
-            options=["Global Adjustment (All Teams)", "Team-Specific Adjustments"]
-        )
+        # Get team sizes
+        team_sizes = reshuffled_teams_df.groupby('New_Team').size().reset_index(name='Team_Size')
+        team_sizes = team_sizes.sort_values('Team_Size')
         
-        if adjustment_type == "Global Adjustment (All Teams)":
-            # Global adjustment for all teams
-            with st.form("adjust_difficulty_form_global"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    day = st.selectbox("Day to Adjust", options=[3, 4], key="global_day")
-                    event_number = st.selectbox("Event Number to Adjust", options=[1, 2, 3], key="global_event")
-                    
-                    # Filter events based on day and event number
-                    if st.session_state.events_data is not None:
-                        filtered_events = st.session_state.events_data[
-                            (st.session_state.events_data['Day'] == day) &
-                            (st.session_state.events_data['Event_Number'] == event_number)
-                        ]
-                        if not filtered_events.empty:
-                            event_name = st.selectbox(
-                                "Event Name",
-                                options=filtered_events['Event_Name'].unique(),
-                                key="global_event_name"
-                            )
-                            # Get event details
-                            event_details = filtered_events[
-                                filtered_events['Event_Name'] == event_name
-                            ].iloc[0]
-                        else:
-                            st.warning(f"No events found for Day {day}, Event {event_number}")
-                            event_name = st.text_input("Event Name", key="global_event_name_input")
-                            event_details = None
-                    else:
-                        event_name = st.text_input("Event Name", key="global_event_name_input")
-                        event_details = None
-                
-                with col2:
-                    if event_details is not None:
-                        # Display current values
-                        st.write(f"Current Event: {event_name}")
-                        
-                        # Get target difficulty
-                        target_multiplier = st.slider(
-                            "Difficulty Adjustment Multiplier",
-                            min_value=0.5,
-                            max_value=1.5,
-                            value=1.0,
-                            step=0.05,
-                            key="global_multiplier"
-                        )
-                        target_difficulty = avg_difficulty * target_multiplier
-                        st.write(f"Target Difficulty Score: {target_difficulty:.2f}")
-                        
-                        # Heat category for temperature multiplier
-                        heat_category = st.selectbox(
-                            "Heat Category",
-                            options=[1, 2, 3, 4, 5],
-                            index=0,
-                            key="global_heat"
-                        )
-                        
-                        # Calculate temperature multiplier
-                        temp_multiplier = 1.0
-                        if heat_category == 4:
-                            temp_multiplier = 1.15
-                        elif heat_category == 5:
-                            temp_multiplier = 1.3
-                        
-                        # Number of participants
-                        num_participants = st.number_input(
-                            "Number of Participants",
-                            value=int(event_details['Initial_Participants']),
-                            min_value=1,
-                            key="global_participants"
-                        )
-                        
-                        # Choose adjustment method
-                        adjustment_method = st.radio(
-                            "Adjustment Method",
-                            options=["Adjust Weight", "Adjust Distance", "Adjust Both"],
-                            key="global_method"
-                        )
-                    else:
-                        st.warning("Please select a valid event to adjust difficulty.")
-                        adjustment_method = st.radio(
-                            "Adjustment Method",
-                            options=["Adjust Weight", "Adjust Distance", "Adjust Both"],
-                            key="global_method_fallback"
-                        )
-                
-                # Equipment adjustment section (similar to Event Recording tab)
-                if event_details is not None and (adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both"):
-                    st.subheader("Adjust Equipment")
-                    
-                    # Get equipment details for this event
-                    equipment_key = f"adjust_equipment_{day}_{event_name}_{event_number}"
-                    
-                    if equipment_key not in st.session_state:
-                        # Initialize equipment from event details or event equipment data
-                        event_equipment = load_event_equip_data()
-                        if not event_equipment.empty and 'EventName' in event_equipment.columns:
-                            if event_name in event_equipment['EventName'].values:
-                                event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
-                                equipment_items = event_equipment[event_equipment['EventID'] == event_id]
-                                st.session_state[equipment_key] = equipment_items.copy()
-                            else:
-                                # Fallback to basic equipment
-                                basic_equipment = pd.DataFrame([{
-                                    'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
-                                    'EquipWt': event_details.get('Equipment_Weight', 0),
-                                    'EquipNum': event_details.get('Number_of_Equipment', 1),
-                                    'AppRatio': 1,
-                                    'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
-                                }])
-                                st.session_state[equipment_key] = basic_equipment
-                        else:
-                            # Fallback to basic equipment
-                            basic_equipment = pd.DataFrame([{
-                                'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
-                                'EquipWt': event_details.get('Equipment_Weight', 0),
-                                'EquipNum': event_details.get('Number_of_Equipment', 1),
-                                'AppRatio': 1,
-                                'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
-                            }])
-                            st.session_state[equipment_key] = basic_equipment
-                    
-                    # Display equipment list
-                    equipment_list = st.session_state[equipment_key]
-                    total_weight = 0
-                    
-                    for i, equip in enumerate(equipment_list.iterrows()):
-                        equip_idx = equip[0]
-                        equip = equip[1]
-                        
-                        col_name, col_weight, col_qty = st.columns([3, 1, 1])
-                        with col_name:
-                            st.text(equip['EquipmentName'])
-                        with col_weight:
-                            st.text(f"{equip['EquipWt']} lbs")
-                        with col_qty:
-                            new_qty = st.number_input(
-                                f"Qty",
-                                value=int(equip['EquipNum']),
-                                min_value=0,
-                                key=f"qty_adjust_{day}_{event_name}_{i}"
-                            )
-                            
-                            if new_qty != equip['EquipNum']:
-                                equipment_list.at[equip_idx, 'EquipNum'] = new_qty
-                                app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
-                                equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
-                        
-                        # Calculate total for this item
-                        item_total = equipment_list.at[equip_idx, 'AppRatioWT']
-                        total_weight += item_total
-                    
-                    st.write(f"**Total Adjusted Weight: {total_weight:.2f} lbs**")
-                
-                # Distance adjustment
-                if event_details is not None and (adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both"):
-                    current_distance = event_details['Distance']
-                    adjusted_distance = st.number_input(
-                        "Adjusted Distance (km)",
-                        value=float(current_distance),
-                        min_value=0.0,
-                        key="global_distance"
-                    )
-                else:
-                    adjusted_distance = None
-                    
-                submit_adjustment = st.form_submit_button("Calculate and Apply Global Adjustments")
-                
-                if submit_adjustment and event_details is not None:
-                    # Collect the adjusted values
-                    adjusted_values = {
-                        'day': day,
-                        'event_number': event_number,
-                        'event_name': event_name,
-                        'target_difficulty': target_difficulty,
-                        'heat_category': heat_category,
-                        'temp_multiplier': temp_multiplier,
-                        'num_participants': num_participants,
-                        'adjustment_method': adjustment_method
-                    }
-                    
-                    # Add weight and equipment details if applicable
-                    if adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both":
-                        equipment_list = st.session_state[equipment_key]
-                        total_weight = equipment_list['AppRatioWT'].sum() if 'AppRatioWT' in equipment_list.columns else sum(equipment_list['EquipWt'] * equipment_list['EquipNum'])
-                        adjusted_values['total_weight'] = total_weight
-                        adjusted_values['equipment_details'] = equipment_list.to_dict('records')
-                    else:
-                        # Calculate adjusted weight
-                        time_limit_min = time_str_to_minutes(event_details['Time_Limit'])
-                        adjusted_values['total_weight'] = adjust_equipment_weight(
-                            target_difficulty, temp_multiplier, current_distance,
-                            time_limit_min, num_participants
-                        )
-                    
-                    # Add distance if applicable
-                    if adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both":
-                        adjusted_values['distance'] = adjusted_distance
-                    else:
-                        # Calculate adjusted distance
-                        time_limit_min = time_str_to_minutes(event_details['Time_Limit'])
-                        current_weight = event_details['Equipment_Weight'] * event_details['Number_of_Equipment']
-                        adjusted_values['distance'] = adjust_distance(
-                            target_difficulty, temp_multiplier, current_weight,
-                            time_limit_min, num_participants
-                        )
-                    
-                    # Store the adjusted values for all teams
-                    if 'adjusted_events' not in st.session_state:
-                        st.session_state.adjusted_events = []
-                    
-                    # Apply to all teams
-                    for team in reshuffled_teams:
-                        team_adjustment = adjusted_values.copy()
-                        team_adjustment['team'] = team
-                        st.session_state.adjusted_events.append(team_adjustment)
-                    
-                    st.success(f"Adjustments calculated and applied to all {len(reshuffled_teams)} teams!")
-                    
-                    # Show a summary of the adjustments
-                    st.subheader("Adjustment Summary")
-                    if adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both":
-                        st.write(f"Adjusted Weight: {total_weight:.2f} lbs")
-                    if adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both":
-                        st.write(f"Adjusted Distance: {adjusted_values['distance']:.2f} km")
-                    st.write(f"Target Difficulty: {target_difficulty:.2f}")
-                    st.write(f"Applied to all teams for Day {day}, Event {event_number}: {event_name}")
+        # Get team composition (OF vs ADE)
+        team_composition = reshuffled_teams_df.groupby(['New_Team', 'Candidate_Type']).size().reset_index(name='Count')
+        team_composition_pivot = team_composition.pivot(index='New_Team', columns='Candidate_Type', values='Count').reset_index()
+        team_composition_pivot = team_composition_pivot.fillna(0)
         
-        else:
-            # Team-specific adjustments
-            st.subheader("Team-Specific Adjustments")
+        # Ensure both OF and ADE columns exist
+        if 'OF' not in team_composition_pivot.columns:
+            team_composition_pivot['OF'] = 0
+        if 'ADE' not in team_composition_pivot.columns:
+            team_composition_pivot['ADE'] = 0
             
-            # First, let the user select teams for each adjustment group
-            col1, col2, col3 = st.columns(3)
+        # Calculate OF:ADE ratio
+        team_composition_pivot['OF_ADE_Ratio'] = team_composition_pivot['OF'] / team_composition_pivot['ADE'].replace(0, 1)
+        team_composition_pivot['Total'] = team_composition_pivot['OF'] + team_composition_pivot['ADE']
+        
+        # Merge with team sizes
+        team_analysis = pd.merge(team_sizes, team_composition_pivot, left_on='New_Team', right_on='New_Team')
+        
+        # Display team composition
+        st.dataframe(team_analysis[['New_Team', 'Team_Size', 'OF', 'ADE', 'OF_ADE_Ratio']], use_container_width=True)
+        
+        # Step 2: Analyze team performance from Days 1-2
+        st.write("### Team Performance Analysis (Days 1-2)")
+        
+        # Calculate average difficulty by original team
+        if 'Team' in days_1_2_data.columns:
+            team_difficulty = days_1_2_data.groupby('Team')['Actual_Difficulty'].mean().reset_index()
+            team_difficulty = team_difficulty.sort_values('Actual_Difficulty', ascending=False)
             
-            with col1:
-                st.write("**Decrease Difficulty**")
-                decrease_teams = st.multiselect(
-                    "Select teams for difficulty decrease",
-                    options=reshuffled_teams
+            # Calculate overall average difficulty
+            avg_overall_difficulty = days_1_2_data['Actual_Difficulty'].mean()
+            
+            # Display team performance
+            st.dataframe(team_difficulty, use_container_width=True)
+            st.write(f"Overall Average Difficulty: {avg_overall_difficulty:.2f}")
+            
+            # Step 3: Analyze individual performance
+            st.write("### Individual Performance Analysis")
+            
+            # Merge roster data with team performance to get individual performance
+            roster_data = st.session_state.roster_data
+            
+            # Merge with team difficulty to get each person's original team performance
+            individual_performance = pd.merge(
+                roster_data,
+                team_difficulty,
+                left_on='Initial_Team',
+                right_on='Team'
+            )
+            
+            # Merge with reshuffled teams to see where they are now
+            individual_performance = pd.merge(
+                individual_performance,
+                reshuffled_teams_df[['Candidate_Name', 'New_Team']],
+                left_on='Candidate_Name',
+                right_on='Candidate_Name',
+                how='inner'
+            )
+            
+            # Calculate performance metrics by new team
+            new_team_projected_difficulty = individual_performance.groupby('New_Team')['Actual_Difficulty'].mean().reset_index()
+            new_team_projected_difficulty = new_team_projected_difficulty.sort_values('Actual_Difficulty')
+            
+            # Display projected team performance
+            st.write("#### Projected Team Performance for Days 3-4 (Without Adjustments)")
+            st.dataframe(new_team_projected_difficulty, use_container_width=True)
+            
+            # Calculate the range of team difficulties
+            min_difficulty = new_team_projected_difficulty['Actual_Difficulty'].min()
+            max_difficulty = new_team_projected_difficulty['Actual_Difficulty'].max()
+            difficulty_range = max_difficulty - min_difficulty
+            
+            st.write(f"Range of Projected Team Difficulties: {difficulty_range:.2f} ({min_difficulty:.2f} to {max_difficulty:.2f})")
+            
+            # Plot the projected team performance
+            fig = px.bar(
+                new_team_projected_difficulty,
+                x='New_Team',
+                y='Actual_Difficulty',
+                title='Projected Team Difficulty for Days 3-4 (Without Adjustments)',
+                labels={'Actual_Difficulty': 'Projected Difficulty', 'New_Team': 'Team'}
+            )
+            
+            # Add a horizontal line for the overall average
+            fig.add_hline(
+                y=avg_overall_difficulty,
+                line_dash="dash",
+                line_color="red",
+                annotation_text=f"Overall Avg: {avg_overall_difficulty:.2f}",
+                annotation_position="bottom right"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Step 4: Calculate needed adjustments for each team
+            st.write("### Recommended Adjustments for Days 3-4")
+            
+            # Get Days 3-4 events from the 4-day plan
+            has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
+                               st.session_state.structured_four_day_plan is not None and 
+                               isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and 
+                               not st.session_state.structured_four_day_plan.empty)
+            
+            if has_four_day_plan:
+                days_3_4_plan = st.session_state.structured_four_day_plan[
+                    st.session_state.structured_four_day_plan['Day'].isin([3, 4])
+                ]
+                
+                # Choose an adjustment approach
+                adjustment_method = st.radio(
+                    "Adjustment Method",
+                    options=["Balance to Average", "Normalize to Hardest Team", "Custom Target Difficulty"],
+                    horizontal=True
                 )
-                decrease_percent = st.slider(
-                    "Decrease by %",
-                    min_value=0,
-                    max_value=50,
-                    value=10,
-                    step=5
+                
+                if adjustment_method == "Balance to Average":
+                    target_difficulty = avg_overall_difficulty
+                    st.write(f"Target Difficulty: {target_difficulty:.2f} (Overall Average)")
+                elif adjustment_method == "Normalize to Hardest Team":
+                    target_difficulty = max_difficulty
+                    st.write(f"Target Difficulty: {target_difficulty:.2f} (Hardest Team)")
+                else:  # Custom
+                    target_difficulty = st.slider(
+                        "Set Custom Target Difficulty",
+                        min_value=float(min_difficulty * 0.8),
+                        max_value=float(max_difficulty * 1.2),
+                        value=float(avg_overall_difficulty),
+                        step=0.01
+                    )
+                    st.write(f"Custom Target Difficulty: {target_difficulty:.2f}")
+                
+                # Calculate adjustment factors for each team
+                new_team_projected_difficulty['Adjustment_Factor'] = target_difficulty / new_team_projected_difficulty['Actual_Difficulty']
+                new_team_projected_difficulty['Adjustment_Percentage'] = (new_team_projected_difficulty['Adjustment_Factor'] - 1) * 100
+                
+                # Display adjustment factors
+                st.write("#### Required Adjustment Factors by Team")
+                adjustment_display = new_team_projected_difficulty[['New_Team', 'Actual_Difficulty', 'Adjustment_Factor', 'Adjustment_Percentage']]
+                adjustment_display = adjustment_display.sort_values('Adjustment_Percentage')
+                
+                # Format for display
+                adjustment_display['Actual_Difficulty'] = adjustment_display['Actual_Difficulty'].map(lambda x: f"{x:.2f}")
+                adjustment_display['Adjustment_Factor'] = adjustment_display['Adjustment_Factor'].map(lambda x: f"{x:.2f}x")
+                adjustment_display['Adjustment_Percentage'] = adjustment_display['Adjustment_Percentage'].map(lambda x: f"{x:+.1f}%")
+                
+                st.dataframe(adjustment_display, use_container_width=True)
+                
+                # Let user select which events to adjust
+                st.write("### Apply Adjustments to Specific Events")
+                
+                days_3_4_events = []
+                if not days_3_4_plan.empty:
+                    # Group events by day
+                    for day in [3, 4]:
+                        day_events = days_3_4_plan[days_3_4_plan['Day'] == day]
+                        if not day_events.empty:
+                            day_events_list = day_events['Event_Name'].unique().tolist()
+                            days_3_4_events.extend([f"Day {day}: {event}" for event in day_events_list])
+                
+                selected_events = st.multiselect(
+                    "Select Events to Adjust",
+                    options=days_3_4_events,
+                    default=days_3_4_events
                 )
-            
-            with col2:
-                st.write("**Increase Difficulty**")
-                increase_teams = st.multiselect(
-                    "Select teams for difficulty increase",
-                    options=[t for t in reshuffled_teams if t not in decrease_teams]
-                )
-                increase_percent = st.slider(
-                    "Increase by %",
-                    min_value=0,
-                    max_value=50,
-                    value=10,
-                    step=5
-                )
-            
-            with col3:
-                st.write("**Keep Same Difficulty**")
-                # Automatically calculate remaining teams
-                same_teams = [t for t in reshuffled_teams if t not in decrease_teams and t not in increase_teams]
-                st.write("Teams with unchanged difficulty:")
-                for team in same_teams:
-                    st.write(f"- {team}")
-            
-            # Now create a form for the base event to adjust
-            with st.form("team_specific_adjustment_form"):
-                col1, col2 = st.columns(2)
                 
-                with col1:
-                    day = st.selectbox("Day to Adjust", options=[3, 4], key="team_day")
-                    event_number = st.selectbox("Event Number to Adjust", options=[1, 2, 3], key="team_event")
-                    
-                    # Filter events based on day and event number
-                    if st.session_state.events_data is not None:
-                        filtered_events = st.session_state.events_data[
-                            (st.session_state.events_data['Day'] == day) &
-                            (st.session_state.events_data['Event_Number'] == event_number)
-                        ]
-                        if not filtered_events.empty:
-                            event_name = st.selectbox(
-                                "Event Name",
-                                options=filtered_events['Event_Name'].unique(),
-                                key="team_event_name"
-                            )
-                            # Get event details
-                            event_details = filtered_events[
-                                filtered_events['Event_Name'] == event_name
-                            ].iloc[0]
-                        else:
-                            st.warning(f"No events found for Day {day}, Event {event_number}")
-                            event_name = st.text_input("Event Name", key="team_event_name_input")
-                            event_details = None
-                    else:
-                        event_name = st.text_input("Event Name", key="team_event_name_input")
-                        event_details = None
-                
-                with col2:
-                    if event_details is not None:
-                        # Display current values
-                        st.write(f"Current Event: {event_name}")
-                        
-                        # Base difficulty score
-                        base_difficulty = avg_difficulty
-                        st.write(f"Base Difficulty Score: {base_difficulty:.2f}")
-                        
-                        # Heat category for temperature multiplier
-                        heat_category = st.selectbox(
-                            "Heat Category",
-                            options=[1, 2, 3, 4, 5],
-                            index=0,
-                            key="team_heat"
-                        )
-                        
-                        # Calculate temperature multiplier
-                        temp_multiplier = 1.0
-                        if heat_category == 4:
-                            temp_multiplier = 1.15
-                        elif heat_category == 5:
-                            temp_multiplier = 1.3
-                        
-                        # Number of participants
-                        num_participants = st.number_input(
-                            "Number of Participants",
-                            value=int(event_details['Initial_Participants']),
-                            min_value=1,
-                            key="team_participants"
-                        )
-                        
-                        # Choose adjustment method
-                        adjustment_method = st.radio(
-                            "Adjustment Method",
-                            options=["Adjust Weight", "Adjust Distance", "Adjust Both"],
-                            key="team_method"
-                        )
-                    else:
-                        st.warning("Please select a valid event to adjust difficulty.")
-                        adjustment_method = st.radio(
-                            "Adjustment Method",
-                            options=["Adjust Weight", "Adjust Distance", "Adjust Both"],
-                            key="team_method_fallback"
-                        )
-                
-                # Equipment adjustment section (similar to Event Recording tab)
-                if event_details is not None and (adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both"):
-                    st.subheader("Base Equipment Setup")
-                    
-                    # Get equipment details for this event
-                    equipment_key = f"team_adjust_equipment_{day}_{event_name}_{event_number}"
-                    
-                    if equipment_key not in st.session_state:
-                        # Initialize equipment from event details or event equipment data
-                        event_equipment = load_event_equip_data()
-                        if not event_equipment.empty and 'EventName' in event_equipment.columns:
-                            if event_name in event_equipment['EventName'].values:
-                                event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
-                                equipment_items = event_equipment[event_equipment['EventID'] == event_id]
-                                st.session_state[equipment_key] = equipment_items.copy()
-                            else:
-                                # Fallback to basic equipment
-                                basic_equipment = pd.DataFrame([{
-                                    'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
-                                    'EquipWt': event_details.get('Equipment_Weight', 0),
-                                    'EquipNum': event_details.get('Number_of_Equipment', 1),
-                                    'AppRatio': 1,
-                                    'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
-                                }])
-                                st.session_state[equipment_key] = basic_equipment
-                        else:
-                            # Fallback to basic equipment
-                            basic_equipment = pd.DataFrame([{
-                                'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
-                                'EquipWt': event_details.get('Equipment_Weight', 0),
-                                'EquipNum': event_details.get('Number_of_Equipment', 1),
-                                'AppRatio': 1,
-                                'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
-                            }])
-                            st.session_state[equipment_key] = basic_equipment
-                    
-                    # Display equipment list
-                    equipment_list = st.session_state[equipment_key]
-                    base_total_weight = 0
-                    
-                    for i, equip in enumerate(equipment_list.iterrows()):
-                        equip_idx = equip[0]
-                        equip = equip[1]
-                        
-                        col_name, col_weight, col_qty = st.columns([3, 1, 1])
-                        with col_name:
-                            st.text(equip['EquipmentName'])
-                        with col_weight:
-                            st.text(f"{equip['EquipWt']} lbs")
-                        with col_qty:
-                            new_qty = st.number_input(
-                                f"Base Qty",
-                                value=int(equip['EquipNum']),
-                                min_value=0,
-                                key=f"qty_team_adjust_{day}_{event_name}_{i}"
-                            )
-                            
-                            if new_qty != equip['EquipNum']:
-                                equipment_list.at[equip_idx, 'EquipNum'] = new_qty
-                                app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
-                                equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
-                        
-                        # Calculate total for this item
-                        item_total = equipment_list.at[equip_idx, 'AppRatioWT']
-                        base_total_weight += item_total
-                    
-                    st.write(f"**Base Total Weight: {base_total_weight:.2f} lbs**")
-                
-                # Distance adjustment
-                if event_details is not None and (adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both"):
-                    base_distance = event_details['Distance']
-                    adjusted_base_distance = st.number_input(
-                        "Base Distance (km)",
-                        value=float(base_distance),
-                        min_value=0.0,
-                        key="team_base_distance"
-                    )
-                else:
-                    adjusted_base_distance = None
-                    
-                submit_team_adjustment = st.form_submit_button("Calculate and Apply Team-Specific Adjustments")
-                
-                if submit_team_adjustment and event_details is not None:
-                    # Calculate and store adjustments for each team group
-                    if 'adjusted_events' not in st.session_state:
-                        st.session_state.adjusted_events = []
-                    
-                    # Time limit for calculations
-                    time_limit_min = time_str_to_minutes(event_details['Time_Limit'])
-                    
-                    # Process decreased difficulty teams
-                    for team in decrease_teams:
-                        target_difficulty = base_difficulty * (1 - decrease_percent / 100)
-                        
-                        team_adjustment = {
-                            'team': team,
-                            'day': day,
-                            'event_number': event_number,
-                            'event_name': event_name,
-                            'target_difficulty': target_difficulty,
-                            'heat_category': heat_category,
-                            'temp_multiplier': temp_multiplier,
-                            'num_participants': num_participants,
-                            'adjustment_method': adjustment_method,
-                            'group': f"Decreased by {decrease_percent}%"
-                        }
-                        
-                        # Add weight/equipment details
-                        if adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both":
-                            if adjustment_method == "Adjust Weight":
-                                # Calculate reduced weight
-                                adjusted_weight = adjust_equipment_weight(
-                                    target_difficulty, temp_multiplier, 
-                                    adjusted_base_distance if adjusted_base_distance is not None else base_distance,
-                                    time_limit_min, num_participants
-                                )
-                                team_adjustment['total_weight'] = adjusted_weight
-                                team_adjustment['distance'] = adjusted_base_distance if adjusted_base_distance is not None else base_distance
-                            else:
-                                # For "Adjust Both", reduce weight proportionally
-                                weight_reduction_factor = 1 - (decrease_percent / 200)  # Half the reduction for weight
-                                team_adjustment['total_weight'] = base_total_weight * weight_reduction_factor
-                        
-                        # Add distance
-                        if adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both":
-                            if adjustment_method == "Adjust Distance":
-                                # Calculate reduced distance
-                                adjusted_distance = adjust_distance(
-                                    target_difficulty, temp_multiplier, 
-                                    base_total_weight,
-                                    time_limit_min, num_participants
-                                )
-                                team_adjustment['distance'] = adjusted_distance
-                                team_adjustment['total_weight'] = base_total_weight
-                            else:
-                                # For "Adjust Both", reduce distance proportionally
-                                distance_reduction_factor = 1 - (decrease_percent / 200)  # Half the reduction for distance
-                                team_adjustment['distance'] = (adjusted_base_distance if adjusted_base_distance is not None else base_distance) * distance_reduction_factor
-                        
-                        st.session_state.adjusted_events.append(team_adjustment)
-                    
-                    # Process increased difficulty teams
-                    for team in increase_teams:
-                        target_difficulty = base_difficulty * (1 + increase_percent / 100)
-                        
-                        team_adjustment = {
-                            'team': team,
-                            'day': day,
-                            'event_number': event_number,
-                            'event_name': event_name,
-                            'target_difficulty': target_difficulty,
-                            'heat_category': heat_category,
-                            'temp_multiplier': temp_multiplier,
-                            'num_participants': num_participants,
-                            'adjustment_method': adjustment_method,
-                            'group': f"Increased by {increase_percent}%"
-                        }
-                        
-                        # Add weight/equipment details
-                        if adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both":
-                            if adjustment_method == "Adjust Weight":
-                                # Calculate increased weight
-                                adjusted_weight = adjust_equipment_weight(
-                                    target_difficulty, temp_multiplier, 
-                                    adjusted_base_distance if adjusted_base_distance is not None else base_distance,
-                                    time_limit_min, num_participants
-                                )
-                                team_adjustment['total_weight'] = adjusted_weight
-                                team_adjustment['distance'] = adjusted_base_distance if adjusted_base_distance is not None else base_distance
-                            else:
-                                # For "Adjust Both", increase weight proportionally
-                                weight_increase_factor = 1 + (increase_percent / 200)  # Half the increase for weight
-                                team_adjustment['total_weight'] = base_total_weight * weight_increase_factor
-                        
-                        # Add distance
-                        if adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both":
-                            if adjustment_method == "Adjust Distance":
-                                # Calculate increased distance
-                                adjusted_distance = adjust_distance(
-                                    target_difficulty, temp_multiplier, 
-                                    base_total_weight,
-                                    time_limit_min, num_participants
-                                )
-                                team_adjustment['distance'] = adjusted_distance
-                                team_adjustment['total_weight'] = base_total_weight
-                            else:
-                                # For "Adjust Both", increase distance proportionally
-                                distance_increase_factor = 1 + (increase_percent / 200)  # Half the increase for distance
-                                team_adjustment['distance'] = (adjusted_base_distance if adjusted_base_distance is not None else base_distance) * distance_increase_factor
-                        
-                        st.session_state.adjusted_events.append(team_adjustment)
-                    
-                    # Process unchanged teams
-                    for team in same_teams:
-                        team_adjustment = {
-                            'team': team,
-                            'day': day,
-                            'event_number': event_number,
-                            'event_name': event_name,
-                            'target_difficulty': base_difficulty,
-                            'heat_category': heat_category,
-                            'temp_multiplier': temp_multiplier,
-                            'num_participants': num_participants,
-                            'adjustment_method': adjustment_method,
-                            'group': "Unchanged"
-                        }
-                        
-                        # Add weight/equipment details
-                        if adjustment_method == "Adjust Weight" or adjustment_method == "Adjust Both":
-                            team_adjustment['total_weight'] = base_total_weight
-                        
-                        # Add distance
-                        if adjustment_method == "Adjust Distance" or adjustment_method == "Adjust Both":
-                            team_adjustment['distance'] = adjusted_base_distance if adjusted_base_distance is not None else base_distance
-                        
-                        st.session_state.adjusted_events.append(team_adjustment)
-                    
-                    st.success("Team-specific adjustments calculated and applied!")
-                    
-                    # Save to session state
-                    save_session_state()
-        
-        # Display all adjusted events
-        if 'adjusted_events' in st.session_state and st.session_state.adjusted_events:
-            st.subheader("All Adjusted Events")
-            
-            # Convert to DataFrame for easier display
-            adjusted_df = pd.DataFrame(st.session_state.adjusted_events)
-            
-            # Add filter for team, day, event
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if 'team' in adjusted_df.columns:
-                    filter_teams = st.multiselect(
-                        "Filter by Team",
-                        options=adjusted_df['team'].unique(),
-                        default=adjusted_df['team'].unique()
-                    )
-                else:
-                    filter_teams = None
-            
-            with col2:
-                if 'day' in adjusted_df.columns:
-                    filter_days = st.multiselect(
-                        "Filter by Day",
-                        options=adjusted_df['day'].unique(),
-                        default=adjusted_df['day'].unique()
-                    )
-                else:
-                    filter_days = None
-            
-            with col3:
-                if 'event_name' in adjusted_df.columns:
-                    filter_events = st.multiselect(
-                        "Filter by Event",
-                        options=adjusted_df['event_name'].unique(),
-                        default=adjusted_df['event_name'].unique()
-                    )
-                else:
-                    filter_events = None
-            
-            # Apply filters
-            filtered_df = adjusted_df
-            if filter_teams:
-                filtered_df = filtered_df[filtered_df['team'].isin(filter_teams)]
-            if filter_days:
-                filtered_df = filtered_df[filtered_df['day'].isin(filter_days)]
-            if filter_events:
-                filtered_df = filtered_df[filtered_df['event_name'].isin(filter_events)]
-            
-            # Display the filtered data
-            if not filtered_df.empty:
-                # Select columns to display
-                display_cols = ['team', 'day', 'event_number', 'event_name', 'target_difficulty', 'total_weight', 'distance']
-                if 'group' in filtered_df.columns:
-                    display_cols.insert(1, 'group')
-                
-                display_df = filtered_df[display_cols].copy()
-                
-                # Rename columns for better display
-                display_df.columns = [col.replace('_', ' ').title() for col in display_cols]
-                
-                # Format numerical columns
-                if 'Target Difficulty' in display_df.columns:
-                    display_df['Target Difficulty'] = display_df['Target Difficulty'].map(lambda x: f"{x:.2f}")
-                if 'Total Weight' in display_df.columns:
-                    display_df['Total Weight'] = display_df['Total Weight'].map(lambda x: f"{x:.2f} lbs")
-                if 'Distance' in display_df.columns:
-                    display_df['Distance'] = display_df['Distance'].map(lambda x: f"{x:.2f} km")
-                
-                st.dataframe(display_df, use_container_width=True)
-                
-                # Add a download button for the adjusted events
-                csv = filtered_df.to_csv(index=False)
-                b64 = base64.b64encode(csv.encode()).decode()
-                href = f'<a href="data:file/csv;base64,{b64}" download="adjusted_events.csv">Download Adjusted Events CSV</a>'
-                st.markdown(href, unsafe_allow_html=True)
-                
-                # Visualization of adjustments
-                st.subheader("Visualization of Adjustments")
-                
-                # Plot target difficulty by team
-                if 'team' in filtered_df.columns and 'target_difficulty' in filtered_df.columns:
-                    fig1 = px.bar(
-                        filtered_df,
-                        x='team',
-                        y='target_difficulty',
-                        color='group' if 'group' in filtered_df.columns else None,
-                        title='Target Difficulty by Team',
-                        labels={'team': 'Team', 'target_difficulty': 'Target Difficulty', 'group': 'Adjustment Group'}
-                    )
-                    st.plotly_chart(fig1, use_container_width=True)
-                
-                # Plot weight and distance adjustments
-                if 'total_weight' in filtered_df.columns and 'distance' in filtered_df.columns:
-                    # Create a selection for which to plot
-                    plot_metric = st.radio(
-                        "Plot Metric",
-                        options=["Weight", "Distance", "Both"],
+                if selected_events:
+                    # Choose adjustment type
+                    adjustment_type = st.radio(
+                        "What to Adjust",
+                        options=["Weight Only", "Distance Only", "Both Weight and Distance"],
                         horizontal=True
                     )
                     
-                    if plot_metric == "Weight" or plot_metric == "Both":
-                        fig2 = px.bar(
-                            filtered_df,
-                            x='team',
-                            y='total_weight',
-                            color='group' if 'group' in filtered_df.columns else None,
-                            title='Adjusted Weight by Team',
-                            labels={'team': 'Team', 'total_weight': 'Weight (lbs)', 'group': 'Adjustment Group'}
-                        )
-                        st.plotly_chart(fig2, use_container_width=True)
+                    # Calculate specific adjustments for each team and event
+                    st.write("### Specific Adjustments by Team and Event")
                     
-                    if plot_metric == "Distance" or plot_metric == "Both":
-                        fig3 = px.bar(
-                            filtered_df,
-                            x='team',
-                            y='distance',
-                            color='group' if 'group' in filtered_df.columns else None,
-                            title='Adjusted Distance by Team',
-                            labels={'team': 'Team', 'distance': 'Distance (km)', 'group': 'Adjustment Group'}
-                        )
-                        st.plotly_chart(fig3, use_container_width=True)
+                    # Create tabs for each selected event
+                    event_tabs = st.tabs(selected_events)
+                    
+                    for i, event_str in enumerate(selected_events):
+                        with event_tabs[i]:
+                            # Parse day and event name
+                            day = int(event_str.split(":")[0].replace("Day ", ""))
+                            event_name = event_str.split(": ")[1]
+                            
+                            # Get event details
+                            event_details = days_3_4_plan[
+                                (days_3_4_plan['Day'] == day) & 
+                                (days_3_4_plan['Event_Name'] == event_name)
+                            ]
+                            
+                            if not event_details.empty:
+                                event_detail = event_details.iloc[0]
+                                st.write(f"#### {event_str}")
+                                
+                                # Calculate and display adjustments for each team
+                                adjustment_results = []
+                                
+                                for _, team_row in new_team_projected_difficulty.iterrows():
+                                    team_name = team_row['New_Team']
+                                    team_adj_factor = team_row['Adjustment_Factor']
+                                    team_adj_percent = team_row['Adjustment_Percentage']
+                                    
+                                    # Base values
+                                    base_weight = event_detail['Equipment_Weight'] * event_detail['Number_of_Equipment']
+                                    base_distance = event_detail['Distance']
+                                    
+                                    # Calculate adjusted values based on adjustment type
+                                    if adjustment_type == "Weight Only":
+                                        adj_weight = base_weight * team_adj_factor
+                                        adj_distance = base_distance
+                                        weight_change_pct = (team_adj_factor - 1) * 100
+                                        distance_change_pct = 0
+                                    elif adjustment_type == "Distance Only":
+                                        adj_weight = base_weight
+                                        adj_distance = base_distance * team_adj_factor
+                                        weight_change_pct = 0
+                                        distance_change_pct = (team_adj_factor - 1) * 100
+                                    else:  # Both
+                                        # Split adjustment between weight and distance
+                                        # Use square root to distribute the effect
+                                        split_factor = np.sqrt(team_adj_factor)
+                                        adj_weight = base_weight * split_factor
+                                        adj_distance = base_distance * split_factor
+                                        weight_change_pct = (split_factor - 1) * 100
+                                        distance_change_pct = (split_factor - 1) * 100
+                                    
+                                    # Add to results
+                                    adjustment_results.append({
+                                        'Team': team_name,
+                                        'Adjustment_Factor': team_adj_factor,
+                                        'Adjustment_Percentage': team_adj_percent,
+                                        'Original_Weight': base_weight,
+                                        'Adjusted_Weight': adj_weight,
+                                        'Weight_Change_Pct': weight_change_pct,
+                                        'Original_Distance': base_distance,
+                                        'Adjusted_Distance': adj_distance,
+                                        'Distance_Change_Pct': distance_change_pct
+                                    })
+                                
+                                # Convert to DataFrame and display
+                                adjustment_results_df = pd.DataFrame(adjustment_results)
+                                
+                                # Format for display
+                                display_df = adjustment_results_df.copy()
+                                display_df['Adjustment_Factor'] = display_df['Adjustment_Factor'].map(lambda x: f"{x:.2f}x")
+                                display_df['Adjustment_Percentage'] = display_df['Adjustment_Percentage'].map(lambda x: f"{x:+.1f}%")
+                                display_df['Original_Weight'] = display_df['Original_Weight'].map(lambda x: f"{x:.1f} lbs")
+                                display_df['Adjusted_Weight'] = display_df['Adjusted_Weight'].map(lambda x: f"{x:.1f} lbs")
+                                display_df['Weight_Change_Pct'] = display_df['Weight_Change_Pct'].map(lambda x: f"{x:+.1f}%")
+                                display_df['Original_Distance'] = display_df['Original_Distance'].map(lambda x: f"{x:.2f} km")
+                                display_df['Adjusted_Distance'] = display_df['Adjusted_Distance'].map(lambda x: f"{x:.2f} km")
+                                display_df['Distance_Change_Pct'] = display_df['Distance_Change_Pct'].map(lambda x: f"{x:+.1f}%")
+                                
+                                st.dataframe(display_df, use_container_width=True)
+                                
+                                # Visualize the adjustments
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    if adjustment_type in ["Weight Only", "Both Weight and Distance"]:
+                                        fig_weight = px.bar(
+                                            adjustment_results_df,
+                                            x='Team',
+                                            y='Adjusted_Weight',
+                                            title=f'Adjusted Weight by Team for {event_str}',
+                                            labels={'Adjusted_Weight': 'Weight (lbs)', 'Team': 'Team'},
+                                            color='Adjustment_Percentage',
+                                            color_continuous_scale='RdYlGn',
+                                            range_color=[-20, 20]
+                                        )
+                                        
+                                        # Add a line for the original weight
+                                        fig_weight.add_hline(
+                                            y=base_weight,
+                                            line_dash="dash",
+                                            line_color="red",
+                                            annotation_text=f"Original: {base_weight:.1f} lbs",
+                                            annotation_position="bottom right"
+                                        )
+                                        
+                                        st.plotly_chart(fig_weight, use_container_width=True)
+                                
+                                with col2:
+                                    if adjustment_type in ["Distance Only", "Both Weight and Distance"]:
+                                        fig_distance = px.bar(
+                                            adjustment_results_df,
+                                            x='Team',
+                                            y='Adjusted_Distance',
+                                            title=f'Adjusted Distance by Team for {event_str}',
+                                            labels={'Adjusted_Distance': 'Distance (km)', 'Team': 'Team'},
+                                            color='Adjustment_Percentage',
+                                            color_continuous_scale='RdYlGn',
+                                            range_color=[-20, 20]
+                                        )
+                                        
+                                        # Add a line for the original distance
+                                        fig_distance.add_hline(
+                                            y=base_distance,
+                                            line_dash="dash",
+                                            line_color="red",
+                                            annotation_text=f"Original: {base_distance:.2f} km",
+                                            annotation_position="bottom right"
+                                        )
+                                        
+                                        st.plotly_chart(fig_distance, use_container_width=True)
+                            else:
+                                st.warning(f"Could not find details for {event_str}")
+                    
+                    # Save adjustments
+                    if st.button("Save All Adjustments"):
+                        if 'team_adjustments' not in st.session_state:
+                            st.session_state.team_adjustments = []
+                        
+                        # Clear existing adjustments for these events
+                        event_keys = [e.replace("Day ", "").replace(": ", "_") for e in selected_events]
+                        st.session_state.team_adjustments = [
+                            adj for adj in st.session_state.team_adjustments 
+                            if adj['event_key'] not in event_keys
+                        ]
+                        
+                        # Create new adjustments
+                        for event_str in selected_events:
+                            # Parse day and event name
+                            day = int(event_str.split(":")[0].replace("Day ", ""))
+                            event_name = event_str.split(": ")[1]
+                            event_key = f"{day}_{event_name}"
+                            
+                            # Get event details
+                            event_details = days_3_4_plan[
+                                (days_3_4_plan['Day'] == day) & 
+                                (days_3_4_plan['Event_Name'] == event_name)
+                            ]
+                            
+                            if not event_details.empty:
+                                event_detail = event_details.iloc[0]
+                                
+                                # Base values
+                                base_weight = event_detail['Equipment_Weight'] * event_detail['Number_of_Equipment']
+                                base_distance = event_detail['Distance']
+                                
+                                # Calculate adjustments for each team
+                                for _, team_row in new_team_projected_difficulty.iterrows():
+                                    team_name = team_row['New_Team']
+                                    team_adj_factor = team_row['Adjustment_Factor']
+                                    
+                                    # Calculate adjusted values based on adjustment type
+                                    if adjustment_type == "Weight Only":
+                                        adj_weight = base_weight * team_adj_factor
+                                        adj_distance = base_distance
+                                    elif adjustment_type == "Distance Only":
+                                        adj_weight = base_weight
+                                        adj_distance = base_distance * team_adj_factor
+                                    else:  # Both
+                                        # Split adjustment between weight and distance
+                                        split_factor = np.sqrt(team_adj_factor)
+                                        adj_weight = base_weight * split_factor
+                                        adj_distance = base_distance * split_factor
+                                    
+                                    # Add to adjustments
+                                    st.session_state.team_adjustments.append({
+                                        'event_key': event_key,
+                                        'day': day,
+                                        'event_name': event_name,
+                                        'team': team_name,
+                                        'original_weight': base_weight,
+                                        'adjusted_weight': adj_weight,
+                                        'original_distance': base_distance,
+                                        'adjusted_distance': adj_distance,
+                                        'adjustment_factor': team_adj_factor,
+                                        'adjustment_type': adjustment_type
+                                    })
+                        
+                        # Save session state
+                        save_session_state()
+                        st.success("All adjustments saved! These will be applied to the selected events for Days 3-4.")
+                        
+                        # Show download button for adjustments
+                        if st.session_state.team_adjustments:
+                            adj_df = pd.DataFrame(st.session_state.team_adjustments)
+                            csv = adj_df.to_csv(index=False)
+                            b64 = base64.b64encode(csv.encode()).decode()
+                            href = f'<a href="data:file/csv;base64,{b64}" download="team_adjustments.csv">Download Team Adjustments CSV</a>'
+                            st.markdown(href, unsafe_allow_html=True)
+                else:
+                    st.warning("Please select at least one event to adjust.")
             else:
-                st.info("No data matches the selected filters.")
-                
+                st.error("No events found for Days 3-4. Please set up the 4-day plan first.")
+        else:
+            st.warning("No team performance data available for Days 1-2. Please record events for Days 1-2 first.")
+        
+        # Display saved adjustments if they exist
+        if 'team_adjustments' in st.session_state and st.session_state.team_adjustments:
+            st.write("### Saved Adjustments")
+            
+            # Convert to DataFrame for display
+            saved_adj_df = pd.DataFrame(st.session_state.team_adjustments)
+            
+            # Group by event
+            event_keys = saved_adj_df['event_key'].unique()
+            
+            # Create tabs for each event
+            event_tabs = st.tabs([key.replace("_", ": Day ") for key in event_keys])
+            
+            for i, event_key in enumerate(event_keys):
+                with event_tabs[i]:
+                    # Filter for this event
+                    event_adj = saved_adj_df[saved_adj_df['event_key'] == event_key]
+                    
+                    # Get event details
+                    day = event_adj['day'].iloc[0]
+                    event_name = event_adj['event_name'].iloc[0]
+                    
+                    st.write(f"#### Day {day}: {event_name}")
+                    
+                    # Format for display
+                    display_cols = ['team', 'original_weight', 'adjusted_weight', 'original_distance', 'adjusted_distance', 'adjustment_factor']
+                    display_df = event_adj[display_cols].copy()
+                    
+                    # Rename columns
+                    display_df.columns = ['Team', 'Original Weight (lbs)', 'Adjusted Weight (lbs)', 
+                                          'Original Distance (km)', 'Adjusted Distance (km)', 'Adjustment Factor']
+                    
+                    # Format numbers
+                    display_df['Original Weight (lbs)'] = display_df['Original Weight (lbs)'].map(lambda x: f"{x:.1f}")
+                    display_df['Adjusted Weight (lbs)'] = display_df['Adjusted Weight (lbs)'].map(lambda x: f"{x:.1f}")
+                    display_df['Original Distance (km)'] = display_df['Original Distance (km)'].map(lambda x: f"{x:.2f}")
+                    display_df['Adjusted Distance (km)'] = display_df['Adjusted Distance (km)'].map(lambda x: f"{x:.2f}")
+                    display_df['Adjustment Factor'] = display_df['Adjustment Factor'].map(lambda x: f"{x:.2f}x")
+                    
+                    st.dataframe(display_df, use_container_width=True)
+            
             # Option to clear all adjustments
-            if st.button("Clear All Adjustments"):
-                st.session_state.adjusted_events = []
+            if st.button("Clear All Saved Adjustments"):
+                st.session_state.team_adjustments = []
+                save_session_state()
                 st.success("All adjustments cleared.")
                 st.rerun()
     else:
-        st.warning("Please reshuffle teams first before adjusting difficulty for Days 3 and 4.")
-
+        st.warning("Please reshuffle teams and record events for Days 1-2 before adjusting difficulty for Days 3-4.")
+                                        
 # Tab 7: Final Scores
 with tabs[6]:
     st.header("Final Difficulty Scores")
