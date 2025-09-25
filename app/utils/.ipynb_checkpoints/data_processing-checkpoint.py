@@ -11,27 +11,35 @@ def load_roster_data(file=None):
         if file is None:
             # Use default data
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            default_path = os.path.join(script_dir, 'data', 'sample_roster.csv')
-            # Print debug information
-            print(f"Looking for default roster at: {default_path}")
-            print(f"Directory exists: {os.path.exists(os.path.dirname(default_path))}")
-            print(f"File exists: {os.path.exists(default_path)}")
+            default_paths = [
+                os.path.join(script_dir, 'data', 'sample_roster.csv'),  # Try project root first
+                os.path.join(os.path.dirname(script_dir), 'data', 'sample_roster.csv'),  # Try one level up
+                os.path.join(script_dir, 'app', 'data', 'sample_roster.csv')  # Try app directory
+            ]
             
-            if os.path.exists(default_path):
-                df = pd.read_csv(default_path)
-                print(f"Successfully loaded roster with {len(df)} rows")
-            else:
-                # Create sample data if file doesn't exist
+            # Try each path until we find a file
+            df = None
+            for path in default_paths:
+                if os.path.exists(path):
+                    print(f"Loading roster data from {path}")
+                    df = pd.read_csv(path)
+                    break
+            
+            # If no file found, create default data
+            if df is None:
                 print("Creating default roster data")
                 df = create_default_roster()
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(default_path), exist_ok=True)
-                # Save it for future use
-                try:
-                    df.to_csv(default_path, index=False)
-                    print(f"Saved default roster to {default_path}")
-                except Exception as e:
-                    print(f"Error saving default roster: {str(e)}")
+                
+                # Try to save to all possible locations
+                for path in default_paths:
+                    try:
+                        # Create directory if it doesn't exist
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        df.to_csv(path, index=False)
+                        print(f"Saved default roster data to {path}")
+                        break  # Stop after first successful save
+                    except Exception as e:
+                        print(f"Could not save to {path}: {str(e)}")
         else:
             df = pd.read_csv(file)
         
@@ -81,17 +89,37 @@ def load_event_equip_data(file=None):
         if file is None:
             # Use default data
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            default_path = os.path.join(script_dir, 'data', 'event_equipment.csv')
-            if os.path.exists(default_path):
-                df = pd.read_csv(default_path)
-            else:
-                # Create sample data from the provided data
+            default_paths = [
+                os.path.join(script_dir, 'data', 'event_equipment.csv'),  # Try project root first
+                os.path.join(os.path.dirname(script_dir), 'data', 'event_equipment.csv'),  # Try one level up
+                os.path.join(script_dir, 'app', 'data', 'event_equipment.csv')  # Try app directory
+            ]
+            
+            # Try each path until we find a file
+            df = None
+            for path in default_paths:
+                if os.path.exists(path):
+                    print(f"Loading event equipment data from {path}")
+                    df = pd.read_csv(path)
+                    break
+            
+            # If no file found, create default data
+            if df is None:
+                print("Creating default event equipment data")
                 df = create_default_event_equipment()
-                # Save it for future use
-                df.to_csv(default_path, index=False)
+                
+                # Try to save to all possible locations
+                for path in default_paths:
+                    try:
+                        # Create directory if it doesn't exist
+                        os.makedirs(os.path.dirname(path), exist_ok=True)
+                        df.to_csv(path, index=False)
+                        print(f"Saved default event equipment data to {path}")
+                        break  # Stop after first successful save
+                    except Exception as e:
+                        print(f"Could not save to {path}: {str(e)}")
         else:
             df = pd.read_csv(file)
-        
         return df
     except Exception as e:
         st.error(f"Error loading event equipment data: {str(e)}")
@@ -325,23 +353,55 @@ def ensure_sample_data_exists():
     from utils.data_processing import (
         create_default_roster, create_default_event_equipment
     )
+    
+    # Get the directories
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    data_dir = os.path.join(project_root, 'data')
+    app_data_dir = os.path.join(script_dir, 'data')
+    
+    # Create directories if they don't exist
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(app_data_dir, exist_ok=True)
+    
+    # Potential paths for data files
+    roster_paths = [
+        os.path.join(data_dir, 'sample_roster.csv'),
+        os.path.join(app_data_dir, 'sample_roster.csv')
+    ]
+    
+    event_equipment_paths = [
+        os.path.join(data_dir, 'event_equipment.csv'),
+        os.path.join(app_data_dir, 'event_equipment.csv')
+    ]
+    
     # Check and create roster data
-    roster_path = os.path.join(data_dir, 'sample_roster.csv')
-    if not os.path.exists(roster_path):
+    roster_exists = any(os.path.exists(path) for path in roster_paths)
+    if not roster_exists:
         roster_df = create_default_roster()
-        roster_df.to_csv(roster_path, index=False)
-        print(f"Created sample roster data at {roster_path}")
-    else:
-        print(f"Sample roster data already exists at {roster_path}")
+        # Try to save to all paths
+        for path in roster_paths:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                roster_df.to_csv(path, index=False)
+                print(f"Created sample roster at {path}")
+                break  # Stop after first successful save
+            except Exception as e:
+                print(f"Could not save roster to {path}: {str(e)}")
     
     # Check and create event equipment data
-    event_equipment_path = os.path.join(data_dir, 'event_equipment.csv')
-    if not os.path.exists(event_equipment_path):
+    event_equipment_exists = any(os.path.exists(path) for path in event_equipment_paths)
+    if not event_equipment_exists:
         event_equipment_df = create_default_event_equipment()
-        event_equipment_df.to_csv(event_equipment_path, index=False)
-        print(f"Created sample event equipment data at {event_equipment_path}")
-    else:
-        print(f"Sample event equipment data already exists at {event_equipment_path}")
+        # Try to save to all paths
+        for path in event_equipment_paths:
+            try:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                event_equipment_df.to_csv(path, index=False)
+                print(f"Created event equipment data at {path}")
+                break  # Stop after first successful save
+            except Exception as e:
+                print(f"Could not save event equipment to {path}: {str(e)}")
 
 def minutes_to_time_str(minutes):
     """

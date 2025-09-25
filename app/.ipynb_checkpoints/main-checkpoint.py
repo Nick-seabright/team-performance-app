@@ -27,11 +27,27 @@ from utils.visualization import (
 )
 
 # Create data directory if it doesn't exist
+# Get the absolute path of the current file (main.py)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-data_dir = os.path.join(os.path.dirname(script_dir), 'data')
-save_dir = os.path.join(os.path.dirname(script_dir), 'saved_sessions')
+
+# Navigate up one level to the project root
+project_root = os.path.dirname(script_dir)
+
+# Define data and save directories relative to project root
+data_dir = os.path.join(project_root, 'data')
+save_dir = os.path.join(project_root, 'saved_sessions')
+
+# Create directories if they don't exist
 os.makedirs(data_dir, exist_ok=True)
 os.makedirs(save_dir, exist_ok=True)
+
+# Also create a data directory in the app folder for compatibility
+app_data_dir = os.path.join(script_dir, 'data')
+os.makedirs(app_data_dir, exist_ok=True)
+
+print(f"Data directory: {data_dir}")
+print(f"App data directory: {app_data_dir}")
+print(f"Save directory: {save_dir}")
 
 # Create sample data files if they don't exist
 def ensure_sample_data_exists():
