@@ -389,11 +389,10 @@ if available_sessions:
 else:
     st.sidebar.info("No saved sessions found on server.")
 
-# Create tabs for different sections
-tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording", "Drop Management", "Team Reshuffling",
-                "Adjust Difficulty", "Final Scores", "Visualizations", "Predictive Analytics"])
+# Create tabs for different sections (with Predictive Analytics tab removed)
+tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording (Days 1-2)", "Drop Management", "Team Reshuffling",
+                "Adjust Difficulty", "Event Recording (Days 3-4)", "Final Scores", "Visualizations"])
 
-# Tab 1: Data Upload
 # Tab 1: Data Upload
 with tabs[0]:
     st.header("Upload Data")
@@ -2667,11 +2666,1330 @@ with tabs[5]:
                 st.rerun()
     else:
         st.warning("Please reshuffle teams and record events for Days 1-2 before adjusting difficulty for Days 3-4.")
-                                        
-# Tab 7: Final Scores
+
+# Tab 7: Event Recording (Days 3-4)
 with tabs[6]:
-    st.header("Final Difficulty Scores")
+    st.header("Event Data Recording (Days 3-4)")
     
+    # First, select the team for which we're recording data
+    if st.session_state.reshuffled_teams is not None:
+        # Get unique teams from reshuffled teams data
+        team_options = st.session_state.reshuffled_teams['New_Team'].unique().tolist()
+        selected_team = st.selectbox("Select Team", options=team_options, key="days_3_4_team_select")
+        team_name = selected_team
+        day_range = [3, 4]
+        day_label = "Days 3-4"
+        
+        st.subheader(f"Recording Events for {team_name} - {day_label}")
+        
+        # Get team size for initial participants default
+        team_roster = st.session_state.reshuffled_teams[
+            st.session_state.reshuffled_teams['New_Team'] == team_name
+        ]
+        team_size = len(team_roster)
+        
+        # Check if we have a 4-day plan
+        has_four_day_plan = ('structured_four_day_plan' in st.session_state and
+                           st.session_state.structured_four_day_plan is not None and
+                           isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and
+                           not st.session_state.structured_four_day_plan.empty)
+        
+        # Prepare heat category options
+        heat_categories = {
+            1: "Heat Category 1 (no multiplier)",
+            2: "Heat Category 2 (no multiplier)",
+            3: "Heat Category 3 (no multiplier)",
+            4: "Heat Category 4 (1.15x multiplier)",
+            5: "Heat Category 5 (1.3x multiplier)"
+        }
+        
+        # Create tabs for each day in the range
+        day_tabs = st.tabs([f"Day {day}" for day in day_range])
+        for i, day in enumerate(day_range):
+            with day_tabs[i]:
+                # Get events for this day from the 4-day plan
+                day_events = []
+                event_details_by_name = {}
+                if has_four_day_plan:
+                    day_plan = st.session_state.structured_four_day_plan[
+                        st.session_state.structured_four_day_plan['Day'] == day
+                    ]
+                    if not day_plan.empty:
+                        # Sort by event number
+                        day_plan = day_plan.sort_values('Event_Number')
+                        day_events = day_plan['Event_Name'].tolist()
+                        # Create a mapping of event names to details
+                        for _, event in day_plan.iterrows():
+                            event_details_by_name[event['Event_Name']] = event
+                
+                if not day_events:
+                    st.warning(f"No events defined for Day {day} in the 4-day plan. Please set up the 4-day plan first.")
+                    continue
+                
+                st.write(f"### Events for Day {day}")
+                
+                # Create an expander for each event
+                for event_idx, event_name in enumerate(day_events):
+                    event_number = event_idx + 1
+                    event_details = event_details_by_name.get(event_name, {})
+                    
+                    # Check for any difficulty adjustments for this team and event
+                    adjusted_weight = None
+                    adjusted_distance = None
+                    if 'team_adjustments' in st.session_state and st.session_state.team_adjustments:
+                        event_key = f"{day}_{event_name}"
+                        for adj in st.session_state.team_adjustments:
+                            if adj['event_key'] == event_key and adj['team'] == team_name:
+                                adjusted_weight = adj['adjusted_weight']
+                                adjusted_distance = adj['adjusted_distance']
+                                break
+                    
+                    # Calculate adjusted initial participants based on previous events
+                    adjusted_initial_participants = team_size  # Default to full team size
+                    previous_drops = []
+                    
+                    # Get all drops for this team across all events up to this one
+                    if not st.session_state.drop_data.empty:
+                        all_team_drops = st.session_state.drop_data[
+                            st.session_state.drop_data['Team'] == team_name
+                        ]
+                        # Get drops from previous events (earlier days or earlier events on same day)
+                        prev_drops_query = (
+                            # Earlier day
+                            (all_team_drops['Day'] < day) |
+                            # Same day but earlier event
+                            ((all_team_drops['Day'] == day) & (all_team_drops['Event_Number'] < event_number))
+                        )
+                        previous_drops_df = all_team_drops[prev_drops_query]
+                        previous_drops = previous_drops_df['Roster_Number'].unique().tolist()
+                        # Calculate adjusted participants by removing those who dropped in previous events
+                        if previous_drops:
+                            # Get the participant list excluding previously dropped
+                            current_participants = team_roster.copy()
+                            current_participants = current_participants[
+                                ~current_participants['Roster_Number'].isin(previous_drops)
+                            ]
+                            adjusted_initial_participants = len(current_participants)
+                    
+                    # Store this value in session state for use in the form
+                    if 'adjusted_participants' not in st.session_state:
+                        st.session_state.adjusted_participants = {}
+                    participants_key = f"{team_name}_{day}_{event_number}"
+                    st.session_state.adjusted_participants[participants_key] = adjusted_initial_participants
+                    
+                    # Check if we already have a record for this event
+                    existing_record = pd.DataFrame()  # Default to empty DataFrame
+                    if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
+                        existing_record = st.session_state.event_records[
+                            (st.session_state.event_records['Team'] == team_name) &
+                            (st.session_state.event_records['Day'] == day) &
+                            (st.session_state.event_records['Event_Number'] == event_number) &
+                            (st.session_state.event_records['Event_Name'] == event_name)
+                        ]
+                    
+                    # Set the expander title based on whether we have existing data
+                    if not existing_record.empty:
+                        expander_title = f"Event {event_number}: {event_name} ✓"
+                        expander_open = False  # Default closed if already recorded
+                    else:
+                        expander_title = f"Event {event_number}: {event_name}"
+                        expander_open = True  # Default open if not recorded
+                        
+                        # If there are difficulty adjustments, indicate in the title
+                        if adjusted_weight is not None or adjusted_distance is not None:
+                            expander_title += " (Adjusted)"
+                    
+                    with st.expander(expander_title, expanded=expander_open):
+                        # If we have existing data, show a summary
+                        if not existing_record.empty:
+                            record = existing_record.iloc[0]
+                            st.success("Event already recorded. You can update the data if needed.")
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.write("**Time:**", f"{record['Start_Time']} - {record['End_Time']}")
+                                st.write("**Duration:**", record['Time_Actual'])
+                            with col2:
+                                st.write("**Distance:**", f"{record['Distance_km']} km")
+                                st.write("**Heat Category:**", record['Heat_Category'])
+                            with col3:
+                                st.write("**Participants:**", record['Initial_Participants'])
+                                st.write("**Drops:**", record['Drops'])
+                                st.write("**Difficulty:**", f"{record['Actual_Difficulty']:.2f}")
+                        
+                        # Create tabs for event data and drops management
+                        event_data_tab, drops_tab = st.tabs(["Event Data", "Manage Drops"])
+                        
+                        # Event Data Tab
+                        with event_data_tab:
+                            # If there are difficulty adjustments, show a notice
+                            if adjusted_weight is not None or adjusted_distance is not None:
+                                st.info("This event has been adjusted for this team based on the difficulty balance calculations.")
+                                
+                                if adjusted_weight is not None:
+                                    st.write(f"**Adjusted Weight:** {adjusted_weight:.1f} lbs (Original: {event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1):.1f} lbs)")
+                                
+                                if adjusted_distance is not None:
+                                    st.write(f"**Adjusted Distance:** {adjusted_distance:.2f} km (Original: {event_details.get('Distance', 0):.2f} km)")
+                            
+                            # Create a form for each event
+                            with st.form(f"event_form_days3-4_{team_name}_{day}_{event_number}"):
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    # Display event details
+                                    st.write(f"**Event Name:** {event_name}")
+                                    time_limit = event_details.get('Time_Limit', '00:00')
+                                    st.write(f"**Time Limit:** {time_limit}")
+                                    
+                                    # Get equipment details
+                                    equipment_key = f"equipment_days3-4_{day}_{event_name}_{event_number}"
+                                    if equipment_key not in st.session_state:
+                                        # Initialize equipment from event details or 4-day plan
+                                        event_equipment = load_event_equip_data()
+                                        if not event_equipment.empty and 'EventName' in event_equipment.columns:
+                                            if event_name in event_equipment['EventName'].values:
+                                                event_id = event_equipment[event_equipment['EventName'] == event_name]['EventID'].unique()[0]
+                                                equipment_items = event_equipment[event_equipment['EventID'] == event_id]
+                                                st.session_state[equipment_key] = equipment_items.copy()
+                                            else:
+                                                # Fallback to basic equipment
+                                                basic_equipment = pd.DataFrame([{
+                                                    'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
+                                                    'EquipWt': event_details.get('Equipment_Weight', 0),
+                                                    'EquipNum': event_details.get('Number_of_Equipment', 1),
+                                                    'AppRatio': 1,
+                                                    'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
+                                                }])
+                                                st.session_state[equipment_key] = basic_equipment
+                                        else:
+                                            # Fallback to basic equipment
+                                            basic_equipment = pd.DataFrame([{
+                                                'EquipmentName': event_details.get('Equipment_Name', 'Generic Equipment'),
+                                                'EquipWt': event_details.get('Equipment_Weight', 0),
+                                                'EquipNum': event_details.get('Number_of_Equipment', 1),
+                                                'AppRatio': 1,
+                                                'AppRatioWT': event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
+                                            }])
+                                            st.session_state[equipment_key] = basic_equipment
+                                    
+                                    # Display equipment list with adjustments applied
+                                    st.write("**Equipment:**")
+                                    equipment_list = st.session_state[equipment_key].copy()
+                                    
+                                    # Apply weight adjustment if available
+                                    if adjusted_weight is not None:
+                                        # Calculate adjustment factor
+                                        original_total = equipment_list['AppRatioWT'].sum()
+                                        if original_total > 0:
+                                            adj_factor = adjusted_weight / original_total
+                                            # Apply to each item
+                                            for i, (_, equip) in enumerate(equipment_list.iterrows()):
+                                                equipment_list.at[i, 'AppRatioWT'] = equip['AppRatioWT'] * adj_factor
+                                    
+                                    # Display equipment
+                                    total_weight = 0
+                                    for i, equip in enumerate(equipment_list.iterrows()):
+                                        equip_idx = equip[0]
+                                        equip = equip[1]
+                                        col_name, col_weight, col_qty = st.columns([3, 1, 1])
+                                        with col_name:
+                                            st.text(equip['EquipmentName'])
+                                        with col_weight:
+                                            st.text(f"{equip['EquipWt']} lbs")
+                                        with col_qty:
+                                            # Set default qty from existing record if available
+                                            default_qty = int(equip['EquipNum'])
+                                            if not existing_record.empty:
+                                                # Try to parse equipment details from existing record
+                                                try:
+                                                    equip_details = existing_record.iloc[0].get('Equipment_Details', '')
+                                                    if equip_details:
+                                                        import json
+                                                        equip_details = json.loads(equip_details.replace("'", "\""))
+                                                        for item in equip_details:
+                                                            if item['Name'] == equip['EquipmentName']:
+                                                                default_qty = int(item['Quantity'])
+                                                                break
+                                                except:
+                                                    pass
+                                            new_qty = st.number_input(
+                                                f"Qty",
+                                                value=default_qty,
+                                                min_value=0,
+                                                key=f"qty_days3-4_{team_name}_{day}_{event_name}_{event_number}_{i}"
+                                            )
+                                            if new_qty != equip['EquipNum']:
+                                                equipment_list.at[equip_idx, 'EquipNum'] = new_qty
+                                                app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
+                                                equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
+                                        # Calculate total for this item
+                                        item_total = equipment_list.at[equip_idx, 'AppRatioWT']
+                                        total_weight += item_total
+                                    
+                                    st.markdown(f"**Total Adjusted Weight: {total_weight:.2f} lbs**")
+                                    
+                                    # Distance input with default from existing record or adjusted value
+                                    default_distance = adjusted_distance if adjusted_distance is not None else event_details.get('Distance', 0)
+                                    if not existing_record.empty:
+                                        default_distance = existing_record.iloc[0]['Distance_km']
+                                    
+                                    distance_km = st.number_input(
+                                        "Distance (km)",
+                                        value=float(default_distance),
+                                        min_value=0.0,
+                                        key=f"distance_days3-4_{team_name}_{day}_{event_name}"
+                                    )
+                                
+                                with col2:
+                                    # Heat category with default from existing record
+                                    default_heat = 1
+                                    if not existing_record.empty:
+                                        default_heat = existing_record.iloc[0]['Heat_Category']
+                                    heat_category = st.selectbox(
+                                        "Heat Category",
+                                        options=list(heat_categories.keys()),
+                                        format_func=lambda x: heat_categories[x],
+                                        index=default_heat-1,
+                                        key=f"heat_days3-4_{team_name}_{day}_{event_name}"
+                                    )
+                                    
+                                    # Start and end times with defaults from existing record
+                                    default_start = ""
+                                    default_end = ""
+                                    if not existing_record.empty:
+                                        default_start = existing_record.iloc[0]['Start_Time']
+                                        default_end = existing_record.iloc[0]['End_Time']
+                                    start_time = st.text_input(
+                                        "Start Time (HH:MM)",
+                                        value=default_start,
+                                        placeholder="e.g., 08:30",
+                                        key=f"start_days3-4_{team_name}_{day}_{event_name}"
+                                    )
+                                    end_time = st.text_input(
+                                        "End Time (HH:MM)",
+                                        value=default_end,
+                                        placeholder="e.g., 11:45",
+                                        key=f"end_days3-4_{team_name}_{day}_{event_name}"
+                                    )
+                                    
+                                    # Initial participants with default based on the freshly calculated value
+                                    # Calculate initial participants based on the ending count from the previous event
+                                    default_participants = team_size  # Default to full team size for the first event
+                                    
+                                    # Determine the previous event (regardless of whether we have a record for it)
+                                    prev_day = day
+                                    prev_event_num = event_number - 1
+                                    # If this is the first event of the day, look at the last event of the previous day
+                                    if prev_event_num < 1:
+                                        prev_day = day - 1
+                                        # Assume 3 events per day as default
+                                        prev_event_num = 3
+                                        # Try to find the actual last event number for the previous day
+                                        if not st.session_state.event_records.empty:
+                                            prev_day_events = st.session_state.event_records[
+                                                (st.session_state.event_records['Team'] == team_name) &
+                                                (st.session_state.event_records['Day'] == prev_day)
+                                            ]
+                                            if not prev_day_events.empty:
+                                                prev_event_num = int(prev_day_events['Event_Number'].max())
+                                    
+                                    # Now try to find a record for this previous event
+                                    previous_event_record = None
+                                    if not st.session_state.event_records.empty:
+                                        prev_event_records = st.session_state.event_records[
+                                            (st.session_state.event_records['Team'] == team_name) &
+                                            (st.session_state.event_records['Day'] == prev_day) &
+                                            (st.session_state.event_records['Event_Number'] == prev_event_num)
+                                        ]
+                                        if not prev_event_records.empty:
+                                            previous_event_record = prev_event_records.iloc[0]
+                                    
+                                    # Calculate default participants based on previous event
+                                    if previous_event_record is not None:
+                                        # Extract values as scalars (not Series)
+                                        try:
+                                            prev_initial = int(previous_event_record['Initial_Participants'])
+                                            prev_drops = int(previous_event_record['Drops'])
+                                            default_participants = prev_initial - prev_drops
+                                            # Display info about calculation
+                                            st.info(f"Initial participants calculated from previous event: {prev_initial} participants - {prev_drops} drops = {default_participants} participants")
+                                        except Exception as e:
+                                            st.error(f"Error calculating from previous event: {str(e)}")
+                                            # Fall back to default
+                                            default_participants = team_size
+                                    else:
+                                        # No previous event record, calculate from drops data
+                                        previous_drops = []
+                                        if not st.session_state.drop_data.empty:
+                                            prev_drops_query = (
+                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                (
+                                                    # Earlier day
+                                                    (st.session_state.drop_data['Day'] < day) |
+                                                    # Same day but earlier event
+                                                    ((st.session_state.drop_data['Day'] == day) &
+                                                     (st.session_state.drop_data['Event_Number'] < event_number))
+                                                )
+                                            )
+                                            if not st.session_state.drop_data[prev_drops_query].empty:
+                                                previous_drops = st.session_state.drop_data[prev_drops_query]['Roster_Number'].unique().tolist()
+                                            # Calculate initial participants excluding previous drops
+                                            default_participants = team_size - len(previous_drops)
+                                            if len(previous_drops) > 0:
+                                                st.info(f"Initial participants set to {default_participants} based on {len(previous_drops)} drops from previous events")
+                                    
+                                    # If we have an existing record, use that value only if it was manually edited
+                                    if not existing_record.empty:
+                                        try:
+                                            existing_participants = int(existing_record.iloc[0]['Initial_Participants'])
+                                            if existing_participants != default_participants:
+                                                # Only use existing value if it was manually edited
+                                                if existing_participants != team_size and existing_participants != (team_size - len(previous_drops if 'previous_drops' in locals() else [])):
+                                                    st.warning(f"Note: This event was previously recorded with {existing_participants} initial participants.")
+                                                    default_participants = existing_participants
+                                        except Exception as e:
+                                            st.error(f"Error retrieving existing participants: {str(e)}")
+                                    
+                                    # Ensure default_participants is an integer
+                                    try:
+                                        default_participants = int(default_participants)
+                                    except:
+                                        default_participants = team_size
+                                        st.error(f"Error converting participants to integer. Using team size: {team_size}")
+                                    
+                                    # Create a unique key for this field
+                                    field_key = f"participants_days3-4_{team_name}_{day}_{event_number}_{event_name}"
+                                    
+                                    # Force update the session state for this input field to ensure it shows the correct value
+                                    if field_key not in st.session_state or st.session_state[field_key] != default_participants:
+                                        st.session_state[field_key] = default_participants
+                                    
+                                    # Display the initial participants field
+                                    initial_participants = st.number_input(
+                                        "Initial Participants",
+                                        value=st.session_state[field_key],  # Use the value from session state
+                                        min_value=0,
+                                        key=field_key
+                                    )
+                                    
+                                    # Get current drop count from drop data
+                                    drops = 0
+                                    if not st.session_state.drop_data.empty:
+                                        drops_query = (
+                                            (st.session_state.drop_data['Team'] == team_name) &
+                                            (st.session_state.drop_data['Day'] == day) &
+                                            (st.session_state.drop_data['Event_Number'] == event_number) &
+                                            (st.session_state.drop_data['Event_Name'] == event_name)
+                                        )
+                                        drops = len(st.session_state.drop_data[drops_query])
+                                    st.write(f"**Drops (automatically calculated):** {drops}")
+                                    
+                                    # Calculate button time duration for preview
+                                    if start_time and end_time:
+                                        try:
+                                            time_actual_min = calculate_duration_minutes(start_time, end_time)
+                                            time_actual = minutes_to_mmss(time_actual_min)
+                                            st.write(f"**Calculated Duration:** {time_actual}")
+                                        except:
+                                            st.warning("Please enter valid times (HH:MM)")
+                                
+                                # Submit button for this event
+                                submit_button = st.form_submit_button(f"Save Event Data")
+                                if submit_button:
+                                    if not start_time or not end_time:
+                                        st.error("Please enter both start and end times.")
+                                    else:
+                                        try:
+                                            # Calculate actual time duration
+                                            time_actual_min = calculate_duration_minutes(start_time, end_time)
+                                            time_actual = minutes_to_mmss(time_actual_min)
+                                            
+                                            # Convert time limit to minutes for calculations
+                                            time_limit_min = time_str_to_minutes(time_limit)
+                                            
+                                            # Calculate temperature multiplier based on heat category
+                                            temp_multiplier = 1.0
+                                            if heat_category == 4:
+                                                temp_multiplier = 1.15
+                                            elif heat_category == 5:
+                                                temp_multiplier = 1.3
+                                            
+                                            # Use the modified equipment data
+                                            equipment_key = f"equipment_days3-4_{day}_{event_name}_{event_number}"
+                                            if equipment_key in st.session_state:
+                                                equipment_data = st.session_state[equipment_key]
+                                                if 'AppRatioWT' in equipment_data.columns:
+                                                    total_weight = equipment_data['AppRatioWT'].sum()
+                                                else:
+                                                    # Fallback calculation
+                                                    total_weight = sum(equipment_data['EquipWt'] * equipment_data['EquipNum'])
+                                                
+                                                # Apply weight adjustment if available
+                                                if adjusted_weight is not None:
+                                                    total_weight = adjusted_weight
+                                                
+                                                # Store individual equipment details for reference
+                                                equipment_details = []
+                                                for _, equip in equipment_data.iterrows():
+                                                    equipment_details.append({
+                                                        'Name': equip['EquipmentName'],
+                                                        'Weight': equip['EquipWt'],
+                                                        'Quantity': equip['EquipNum'],
+                                                        'AppRatio': equip['AppRatio'] if 'AppRatio' in equip else 1,
+                                                        'TotalWeight': equip['AppRatioWT'] if 'AppRatioWT' in equip else (equip['EquipWt'] * equip['EquipNum'])
+                                                    })
+                                            else:
+                                                # Fallback to simple calculation
+                                                total_weight = event_details.get('Equipment_Weight', 0) * event_details.get('Number_of_Equipment', 1)
+                                                if adjusted_weight is not None:
+                                                    total_weight = adjusted_weight
+                                                equipment_details = [{
+                                                    'Name': event_details.get('Equipment_Name', 'Generic Equipment'),
+                                                    'Weight': event_details.get('Equipment_Weight', 0),
+                                                    'Quantity': event_details.get('Number_of_Equipment', 1),
+                                                    'TotalWeight': total_weight
+                                                }]
+                                            
+                                            # Calculate difficulty scores
+                                            initial_difficulty = calculate_initial_difficulty(
+                                                temp_multiplier, total_weight, initial_participants,
+                                                distance_km, time_limit_min
+                                            )
+                                            
+                                            # Get current drop count from drop data
+                                            drops = 0
+                                            team_drop_data = pd.DataFrame()
+                                            if not st.session_state.drop_data.empty:
+                                                drops_query = (
+                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                    (st.session_state.drop_data['Day'] == day) &
+                                                    (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                    (st.session_state.drop_data['Event_Name'] == event_name)
+                                                )
+                                                team_drop_data = st.session_state.drop_data[drops_query]
+                                                drops = len(team_drop_data)
+                                            
+                                            actual_difficulty = calculate_actual_difficulty(
+                                                temp_multiplier, total_weight, initial_participants,
+                                                distance_km, time_actual_min, drops,
+                                                team_drop_data, day, event_number, event_name,
+                                                start_time
+                                            )
+                                            
+                                            # Create new record
+                                            new_record = {
+                                                'Team': team_name,
+                                                'Day': day,
+                                                'Event_Number': event_number,
+                                                'Event_Name': event_name,
+                                                'Equipment_Name': ', '.join([ed['Name'] for ed in equipment_details]),
+                                                'Equipment_Weight': total_weight / sum([ed['Quantity'] for ed in equipment_details]) if sum([ed['Quantity'] for ed in equipment_details]) > 0 else 0,
+                                                'Number_of_Equipment': sum([ed['Quantity'] for ed in equipment_details]),
+                                                'Distance_km': distance_km,
+                                                'Heat_Category': heat_category,
+                                                'Time_Limit': time_limit,
+                                                'Start_Time': start_time,
+                                                'End_Time': end_time,
+                                                'Time_Actual': time_actual,
+                                                'Time_Actual_Minutes': time_actual_min,
+                                                'Initial_Participants': initial_participants,
+                                                'Drops': drops,
+                                                'Initial_Difficulty': initial_difficulty,
+                                                'Actual_Difficulty': actual_difficulty,
+                                                'Temperature_Multiplier': temp_multiplier,
+                                                'Equipment_Details': str(equipment_details)  # Store as string for DataFrame
+                                            }
+                                            
+                                            # Check if we already have an entry for this team, day, event number, and event name
+                                            if not existing_record.empty:
+                                                # Update the existing record
+                                                st.session_state.event_records.loc[existing_record.index[0]] = new_record
+                                                st.success(f"Event data updated for {event_name}")
+                                            else:
+                                                # Add new record
+                                                st.session_state.event_records = pd.concat([
+                                                    st.session_state.event_records,
+                                                    pd.DataFrame([new_record])
+                                                ], ignore_index=True)
+                                                st.success(f"Event data recorded for {event_name}")
+                                            
+                                            # Automatically save the session after recording data
+                                            save_session_state()
+                                            
+                                            # Rerun to refresh the UI
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error saving event data: {str(e)}")
+                        
+                        # Drops Management Tab
+                        with drops_tab:
+                            st.write(f"### Manage Drops for {event_name}")
+                            
+                            # Display the current participants
+                            st.write("#### Current Participants")
+                            try:
+                                # Get all drops for this team across all events
+                                all_team_drops = pd.DataFrame()
+                                if not st.session_state.drop_data.empty:
+                                    all_team_drops = st.session_state.drop_data[
+                                        st.session_state.drop_data['Team'] == team_name
+                                    ]
+                                
+                                # Get drops from previous events (earlier days or earlier events on same day)
+                                previous_drops_df = pd.DataFrame()
+                                if not all_team_drops.empty:
+                                    # Previous events drops query
+                                    prev_drops_query = (
+                                        # Earlier day
+                                        (all_team_drops['Day'] < day) |
+                                        # Same day but earlier event
+                                        ((all_team_drops['Day'] == day) & (all_team_drops['Event_Number'] < event_number))
+                                    )
+                                    previous_drops_df = all_team_drops[prev_drops_query]
+                                    previous_drops = previous_drops_df['Roster_Number'].unique().tolist()
+                                
+                                # Get drops specific to this event
+                                current_drops = []
+                                current_drops_df = pd.DataFrame()
+                                if not all_team_drops.empty:
+                                    current_drops_df = all_team_drops[
+                                        (all_team_drops['Day'] == day) &
+                                        (all_team_drops['Event_Number'] == event_number) &
+                                        (all_team_drops['Event_Name'] == event_name)
+                                    ]
+                                    current_drops = current_drops_df['Roster_Number'].tolist()
+                                
+                                # Get the participant list from the team roster
+                                current_participants = team_roster.copy()
+                                
+                                # Filter out previously dropped participants
+                                if previous_drops_df is not None and not previous_drops_df.empty:
+                                    previous_drops = previous_drops_df['Roster_Number'].unique().tolist()
+                                    if previous_drops:
+                                        current_participants = current_participants[
+                                            ~current_participants['Roster_Number'].isin(previous_drops)
+                                        ]
+                                
+                                # Further filter out those who dropped in this specific event
+                                active_participants = current_participants.copy()
+                                if current_drops:
+                                    active_participants = active_participants[
+                                        ~active_participants['Roster_Number'].isin(current_drops)
+                                    ]
+                                
+                                # Show the adjusted initial participants count that will be used
+                                st.write(f"**Initial participants for this event: {adjusted_initial_participants}**")
+                                st.write(f"**Current drops for this event: {len(current_drops)}**")
+                                st.write(f"**Remaining active participants: {adjusted_initial_participants - len(current_drops)}**")
+                                
+                                # Show the active participants with drop option
+                                if not active_participants.empty:
+                                    st.write(f"{len(active_participants)} active participants for this event:")
+                                    
+                                    # Create a selection for the participant to drop
+                                    with st.form(f"drop_form_days3-4_{day}_{event_number}"):
+                                        # Select a participant to drop
+                                        participant_options = active_participants['Candidate_Name'].tolist()
+                                        if participant_options:
+                                            drop_participant = st.selectbox(
+                                                "Select participant to mark as dropped:",
+                                                options=participant_options,
+                                                key=f"drop_participant_days3-4_{day}_{event_number}"
+                                            )
+                                            
+                                            # Get the roster number for this participant
+                                            drop_roster_number = active_participants[
+                                                active_participants['Candidate_Name'] == drop_participant
+                                            ]['Roster_Number'].values[0]
+                                            
+                                            # Get current time for drop time if no time specified
+                                            current_time = datetime.now().strftime("%H:%M")
+                                            
+                                            # Default to event start time if available
+                                            start_time_val = ""
+                                            if not existing_record.empty:
+                                                start_time_val = existing_record.iloc[0]['Start_Time']
+                                            
+                                            # Enter drop time
+                                            drop_time = st.text_input(
+                                                "Drop Time (HH:MM)",
+                                                value=start_time_val if start_time_val else current_time,
+                                                placeholder="e.g., 09:15",
+                                                key=f"drop_time_days3-4_{day}_{event_number}"
+                                            )
+                                            
+                                            # Submit button
+                                            drop_submit = st.form_submit_button("Record Drop")
+                                            if drop_submit:
+                                                if drop_time:
+                                                    try:
+                                                        # Add to drop data
+                                                        new_drop = {
+                                                            'Team': team_name,
+                                                            'Participant_Name': drop_participant,
+                                                            'Roster_Number': drop_roster_number,
+                                                            'Event_Name': event_name,
+                                                            'Drop_Time': drop_time,
+                                                            'Day': day,
+                                                            'Event_Number': event_number
+                                                        }
+                                                        
+                                                        # Create the drop_data DataFrame if it doesn't exist or is empty
+                                                        if 'drop_data' not in st.session_state or st.session_state.drop_data.empty:
+                                                            st.session_state.drop_data = pd.DataFrame([new_drop])
+                                                        else:
+                                                            # Check if this drop already exists
+                                                            existing_drop = st.session_state.drop_data[
+                                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                                (st.session_state.drop_data['Roster_Number'] == drop_roster_number) &
+                                                                (st.session_state.drop_data['Day'] == day) &
+                                                                (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                                (st.session_state.drop_data['Event_Name'] == event_name)
+                                                            ]
+                                                            
+                                                            if existing_drop.empty:
+                                                                # Add the new drop
+                                                                st.session_state.drop_data = pd.concat([
+                                                                    st.session_state.drop_data,
+                                                                    pd.DataFrame([new_drop])
+                                                                ], ignore_index=True)
+                                                            else:
+                                                                # Update the existing drop
+                                                                st.session_state.drop_data.loc[existing_drop.index[0], 'Drop_Time'] = drop_time
+                                                        
+                                                        # Update the corresponding event record if it exists
+                                                        if not st.session_state.event_records.empty:
+                                                            event_record = st.session_state.event_records[
+                                                                (st.session_state.event_records['Team'] == team_name) &
+                                                                (st.session_state.event_records['Day'] == day) &
+                                                                (st.session_state.event_records['Event_Number'] == event_number) &
+                                                                (st.session_state.event_records['Event_Name'] == event_name)
+                                                            ]
+                                                            
+                                                            if not event_record.empty:
+                                                                # Get the current drops count
+                                                                drops_query = (
+                                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                                    (st.session_state.drop_data['Day'] == day) &
+                                                                    (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                                    (st.session_state.drop_data['Event_Name'] == event_name)
+                                                                )
+                                                                drops_count = len(st.session_state.drop_data[drops_query])
+                                                                
+                                                                # Update the drops count in the event record
+                                                                st.session_state.event_records.loc[event_record.index[0], 'Drops'] = drops_count
+                                                                
+                                                                # Recalculate the actual difficulty with the new drops count
+                                                                record = event_record.iloc[0]
+                                                                temp_multiplier = record['Temperature_Multiplier']
+                                                                total_weight = record['Equipment_Weight'] * record['Number_of_Equipment']
+                                                                initial_participants = record['Initial_Participants']
+                                                                distance_km = record['Distance_km']
+                                                                time_actual_min = record['Time_Actual_Minutes']
+                                                                
+                                                                # Recalculate actual difficulty
+                                                                actual_difficulty = calculate_actual_difficulty(
+                                                                    temp_multiplier, total_weight, initial_participants,
+                                                                    distance_km, time_actual_min, drops_count,
+                                                                    st.session_state.drop_data[drops_query], day, event_number, event_name,
+                                                                    record['Start_Time']
+                                                                )
+                                                                
+                                                                # Update the actual difficulty
+                                                                st.session_state.event_records.loc[event_record.index[0], 'Actual_Difficulty'] = actual_difficulty
+                                                        
+                                                        # Update ALL subsequent event records for this team to reflect the drop
+                                                        if not st.session_state.event_records.empty:
+                                                            # Get all events for this team that occur after the current event
+                                                            subsequent_events = st.session_state.event_records[
+                                                                (st.session_state.event_records['Team'] == team_name) &
+                                                                (
+                                                                    # Later day
+                                                                    (st.session_state.event_records['Day'] > day) |
+                                                                    # Same day but later event
+                                                                    ((st.session_state.event_records['Day'] == day) &
+                                                                     (st.session_state.event_records['Event_Number'] > event_number))
+                                                                )
+                                                            ]
+                                                            
+                                                            # For each subsequent event, update the initial participants count
+                                                            for idx, event_record in subsequent_events.iterrows():
+                                                                # Calculate the updated initial participants for this subsequent event
+                                                                event_day = event_record['Day']
+                                                                event_num = event_record['Event_Number']
+                                                                
+                                                                # Get drops from events before this one
+                                                                prev_drops_to_event = st.session_state.drop_data[
+                                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                                    (
+                                                                        # Earlier day
+                                                                        (st.session_state.drop_data['Day'] < event_day) |
+                                                                        # Same day but earlier event
+                                                                        ((st.session_state.drop_data['Day'] == event_day) &
+                                                                         (st.session_state.drop_data['Event_Number'] < event_num))
+                                                                    )
+                                                                ]['Roster_Number'].unique()
+                                                                
+                                                                # Calculate new initial participants count
+                                                                updated_initial_participants = team_size - len(prev_drops_to_event)
+                                                                
+                                                                # Update the event record
+                                                                st.session_state.event_records.loc[idx, 'Initial_Participants'] = updated_initial_participants
+                                                                
+                                                                # Recalculate difficulty scores with the updated initial participants
+                                                                record = st.session_state.event_records.loc[idx]
+                                                                
+                                                                # Get current drop count for this event
+                                                                event_drops = st.session_state.drop_data[
+                                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                                    (st.session_state.drop_data['Day'] == event_day) &
+                                                                    (st.session_state.drop_data['Event_Number'] == event_num) &
+                                                                    (st.session_state.drop_data['Event_Name'] == record['Event_Name'])
+                                                                ]
+                                                                drops_count = len(event_drops)
+                                                                
+                                                                # Recalculate initial difficulty
+                                                                initial_difficulty = calculate_initial_difficulty(
+                                                                    record['Temperature_Multiplier'],
+                                                                    record['Equipment_Weight'] * record['Number_of_Equipment'],
+                                                                    updated_initial_participants,
+                                                                    record['Distance_km'],
+                                                                    time_str_to_minutes(record['Time_Limit'])
+                                                                )
+                                                                
+                                                                # Recalculate actual difficulty
+                                                                actual_difficulty = calculate_actual_difficulty(
+                                                                    record['Temperature_Multiplier'],
+                                                                    record['Equipment_Weight'] * record['Number_of_Equipment'],
+                                                                    updated_initial_participants,
+                                                                    record['Distance_km'],
+                                                                    record['Time_Actual_Minutes'],
+                                                                    drops_count,
+                                                                    event_drops,
+                                                                    event_day,
+                                                                    event_num,
+                                                                    record['Event_Name'],
+                                                                    record['Start_Time']
+                                                                )
+                                                                
+                                                                # Update difficulty scores
+                                                                st.session_state.event_records.loc[idx, 'Initial_Difficulty'] = initial_difficulty
+                                                                st.session_state.event_records.loc[idx, 'Actual_Difficulty'] = actual_difficulty
+                                                        
+                                                        st.success(f"{drop_participant} marked as dropped at {drop_time}")
+                                                        
+                                                        # Save session
+                                                        save_session_state()
+                                                        
+                                                        # Need to rerun to refresh the UI
+                                                        st.rerun()
+                                                    except Exception as e:
+                                                        st.error(f"Error recording drop: {str(e)}")
+                                                else:
+                                                    st.error("Please enter a valid drop time.")
+                                        else:
+                                            st.write("No participants available to drop.")
+                                    
+                                    # Display current active participants in a table format
+                                    st.write("#### Active Participants List")
+                                    active_display = active_participants[['Candidate_Name', 'Candidate_Type', 'Roster_Number']]
+                                    active_display.columns = ['Participant', 'Type', 'Roster #']
+                                    st.dataframe(active_display)
+                                else:
+                                    if previous_drops_df is not None and not previous_drops_df.empty:
+                                        st.warning(f"Initial participants for this event: {adjusted_initial_participants}")
+                                        if len(current_drops) == adjusted_initial_participants:
+                                            st.info("All participants have dropped from this event.")
+                                        else:
+                                            st.info("No active participants remaining for this event.")
+                                    else:
+                                        st.info("All participants have dropped from this event.")
+                                
+                                # If there are participants who dropped from previous events, show them
+                                if previous_drops_df is not None and not previous_drops_df.empty:
+                                    st.write("#### Participants Dropped from Previous Events")
+                                    # Group by participant to show their last drop
+                                    participant_last_drops = previous_drops_df.sort_values(['Day', 'Event_Number'], ascending=False)
+                                    participant_last_drops = participant_last_drops.drop_duplicates('Roster_Number')
+                                    
+                                    # Create a nice display table
+                                    prev_drop_display = participant_last_drops[['Participant_Name', 'Day', 'Event_Number', 'Event_Name']].copy()
+                                    prev_drop_display.columns = ['Participant', 'Day', 'Event #', 'Dropped During']
+                                    prev_drop_display = prev_drop_display.sort_values(['Day', 'Event #'])
+                                    st.dataframe(prev_drop_display)
+                                    st.info(f"These {len(prev_drop_display)} participants dropped from previous events and are not eligible for this event.")
+                                
+                                # Display the participants who have dropped in this specific event
+                                st.write("#### Dropped Participants (This Event)")
+                                if not current_drops_df.empty:
+                                    # Create a table of dropped participants
+                                    st.write(f"{len(current_drops_df)} participants have dropped from this event:")
+                                    
+                                    # Create a dataframe for display
+                                    drop_display = current_drops_df[['Participant_Name', 'Drop_Time']].copy()
+                                    drop_display.columns = ['Participant', 'Drop Time']
+                                    
+                                    # Display the dataframe with a "Remove" button column
+                                    st.dataframe(drop_display)
+                                    
+                                    # Add a form to remove drops with a unique key
+                                    with st.form(f"remove_drop_form_days3-4_{day}_{event_number}"):
+                                        st.write("Remove a participant from the drop list:")
+                                        
+                                        # Select a participant to remove from drops
+                                        remove_options = current_drops_df['Participant_Name'].tolist()
+                                        if remove_options:
+                                            participant_to_remove = st.selectbox(
+                                                "Select participant:",
+                                                options=remove_options,
+                                                key=f"remove_participant_days3-4_{day}_{event_number}"
+                                            )
+                                            
+                                            # Get the roster number
+                                            remove_roster_number = current_drops_df[
+                                                current_drops_df['Participant_Name'] == participant_to_remove
+                                            ]['Roster_Number'].values[0]
+                                            
+                                            # Submit button
+                                            remove_submit = st.form_submit_button("Remove Drop")
+                                            if remove_submit:
+                                                try:
+                                                    # Remove this drop from the drop_data
+                                                    st.session_state.drop_data = st.session_state.drop_data[
+                                                        ~((st.session_state.drop_data['Team'] == team_name) &
+                                                        (st.session_state.drop_data['Day'] == day) &
+                                                        (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                        (st.session_state.drop_data['Event_Name'] == event_name) &
+                                                        (st.session_state.drop_data['Roster_Number'] == remove_roster_number))
+                                                    ]
+                                                    
+                                                    # Update the corresponding event record if it exists
+                                                    if not st.session_state.event_records.empty:
+                                                        event_record = st.session_state.event_records[
+                                                            (st.session_state.event_records['Team'] == team_name) &
+                                                            (st.session_state.event_records['Day'] == day) &
+                                                            (st.session_state.event_records['Event_Number'] == event_number) &
+                                                            (st.session_state.event_records['Event_Name'] == event_name)
+                                                        ]
+                                                        
+                                                        if not event_record.empty:
+                                                            # Recalculate the current drops count
+                                                            drops_query = (
+                                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                                (st.session_state.drop_data['Day'] == day) &
+                                                                (st.session_state.drop_data['Event_Number'] == event_number) &
+                                                                (st.session_state.drop_data['Event_Name'] == event_name)
+                                                            )
+                                                            drops_count = len(st.session_state.drop_data[drops_query])
+                                                            
+                                                            # Update the drops count in the event record
+                                                            st.session_state.event_records.loc[event_record.index[0], 'Drops'] = drops_count
+                                                            
+                                                            # Recalculate the actual difficulty with the updated drops count
+                                                            record = event_record.iloc[0]
+                                                            temp_multiplier = record['Temperature_Multiplier']
+                                                            total_weight = record['Equipment_Weight'] * record['Number_of_Equipment']
+                                                            initial_participants = record['Initial_Participants']
+                                                            distance_km = record['Distance_km']
+                                                            time_actual_min = record['Time_Actual_Minutes']
+                                                            
+                                                            # Recalculate actual difficulty
+                                                            actual_difficulty = calculate_actual_difficulty(
+                                                                temp_multiplier, total_weight, initial_participants,
+                                                                distance_km, time_actual_min, drops_count,
+                                                                st.session_state.drop_data[drops_query], day, event_number, event_name,
+                                                                record['Start_Time']
+                                                            )
+                                                            
+                                                            # Update the actual difficulty
+                                                            st.session_state.event_records.loc[event_record.index[0], 'Actual_Difficulty'] = actual_difficulty
+                                                    
+                                                    # Update ALL subsequent event records for this team to reflect the removed drop
+                                                    if not st.session_state.event_records.empty:
+                                                        # Get all events for this team that occur after the current event
+                                                        subsequent_events = st.session_state.event_records[
+                                                            (st.session_state.event_records['Team'] == team_name) &
+                                                            (
+                                                                # Later day
+                                                                (st.session_state.event_records['Day'] > day) |
+                                                                # Same day but later event
+                                                                ((st.session_state.event_records['Day'] == day) &
+                                                                 (st.session_state.event_records['Event_Number'] > event_number))
+                                                            )
+                                                        ]
+                                                        
+                                                        # For each subsequent event, update the initial participants count
+                                                        for idx, event_record in subsequent_events.iterrows():
+                                                            # Calculate the updated initial participants for this subsequent event
+                                                            event_day = event_record['Day']
+                                                            event_num = event_record['Event_Number']
+                                                            
+                                                            # Get drops from events before this one
+                                                            prev_drops_to_event = st.session_state.drop_data[
+                                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                                (
+                                                                    # Earlier day
+                                                                    (st.session_state.drop_data['Day'] < event_day) |
+                                                                    # Same day but earlier event
+                                                                    ((st.session_state.drop_data['Day'] == event_day) &
+                                                                     (st.session_state.drop_data['Event_Number'] < event_num))
+                                                                )
+                                                            ]['Roster_Number'].unique()
+                                                            
+                                                            # Calculate new initial participants count
+                                                            updated_initial_participants = team_size - len(prev_drops_to_event)
+                                                            
+                                                            # Update the event record
+                                                            st.session_state.event_records.loc[idx, 'Initial_Participants'] = updated_initial_participants
+                                                            
+                                                            # Recalculate difficulty scores with the updated initial participants
+                                                            record = st.session_state.event_records.loc[idx]
+                                                            
+                                                            # Get current drop count for this event
+                                                            event_drops = st.session_state.drop_data[
+                                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                                (st.session_state.drop_data['Day'] == event_day) &
+                                                                (st.session_state.drop_data['Event_Number'] == event_num) &
+                                                                (st.session_state.drop_data['Event_Name'] == record['Event_Name'])
+                                                            ]
+                                                            drops_count = len(event_drops)
+                                                            
+                                                            # Recalculate initial difficulty
+                                                            initial_difficulty = calculate_initial_difficulty(
+                                                                record['Temperature_Multiplier'],
+                                                                record['Equipment_Weight'] * record['Number_of_Equipment'],
+                                                                updated_initial_participants,
+                                                                record['Distance_km'],
+                                                                time_str_to_minutes(record['Time_Limit'])
+                                                            )
+                                                            
+                                                            # Recalculate actual difficulty
+                                                            actual_difficulty = calculate_actual_difficulty(
+                                                                record['Temperature_Multiplier'],
+                                                                record['Equipment_Weight'] * record['Number_of_Equipment'],
+                                                                updated_initial_participants,
+                                                                record['Distance_km'],
+                                                                record['Time_Actual_Minutes'],
+                                                                drops_count,
+                                                                event_drops,
+                                                                event_day,
+                                                                event_num,
+                                                                record['Event_Name'],
+                                                                record['Start_Time']
+                                                            )
+                                                            
+                                                            # Update difficulty scores
+                                                            st.session_state.event_records.loc[idx, 'Initial_Difficulty'] = initial_difficulty
+                                                            st.session_state.event_records.loc[idx, 'Actual_Difficulty'] = actual_difficulty
+                                                    
+                                                    st.success(f"Removed drop for {participant_to_remove}")
+                                                    
+                                                    # Save session and refresh
+                                                    save_session_state()
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Error removing drop: {str(e)}")
+                                        else:
+                                            st.write("No participants to remove.")
+                                else:
+                                    st.info("No participants have dropped from this specific event yet.")
+                            except Exception as e:
+                                st.error(f"Error in drop management: {str(e)}")
+                                st.info("Please try refreshing the page if you encounter issues with drop management.")
+                
+                # After all event expanders, add a section to show completion status for this day
+                st.write("---")
+                st.write("### Day Completion Status")
+                
+                # Check how many events are recorded for this day and team
+                recorded_events = []
+                if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
+                    day_records = st.session_state.event_records[
+                        (st.session_state.event_records['Team'] == team_name) &
+                        (st.session_state.event_records['Day'] == day)
+                    ]
+                    recorded_events = day_records['Event_Name'].tolist()
+                
+                # Display completion status for each event
+                for event_idx, event_name in enumerate(day_events):
+                    if event_name in recorded_events:
+                        st.write(f"✅ Event {event_idx+1}: {event_name} - **Recorded**")
+                    else:
+                        st.write(f"❌ Event {event_idx+1}: {event_name} - **Not Recorded**")
+                
+                # Show completion percentage
+                completion_pct = len(recorded_events) / len(day_events) * 100 if day_events else 0
+                st.progress(completion_pct / 100)
+                st.write(f"**Day {day} Completion: {completion_pct:.0f}%**")
+        
+        # After all day tabs, show a summary of all recorded events for this team
+        st.write("---")
+        st.subheader(f"Summary of All Recorded Events for {team_name}")
+        if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
+            team_records = st.session_state.event_records[
+                st.session_state.event_records['Team'] == team_name
+            ]
+            if not team_records.empty:
+                # Create a summary table
+                summary_data = []
+                for _, record in team_records.iterrows():
+                    # Count drops for this event
+                    drop_count = record['Drops']
+                    summary_data.append({
+                        'Day': record['Day'],
+                        'Event': f"Event {record['Event_Number']}: {record['Event_Name']}",
+                        'Time': f"{record['Start_Time']} - {record['End_Time']} ({record['Time_Actual']})",
+                        'Distance': f"{record['Distance_km']} km",
+                        'Heat': record['Heat_Category'],
+                        'Participants': f"{record['Initial_Participants'] - drop_count} / {record['Initial_Participants']}",
+                        'Drops': drop_count,
+                        'Difficulty': f"{record['Actual_Difficulty']:.2f}"
+                    })
+                
+                # Convert to DataFrame and display
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df.sort_values(['Day', 'Event']), use_container_width=True)
+                
+                # Add download button for team records
+                csv = team_records.to_csv(index=False)
+                b64 = base64.b64encode(csv.encode()).decode()
+                href = f'<a href="data:file/csv;base64,{b64}" download="{team_name}_event_records.csv">Download {team_name} Event Records</a>'
+                st.markdown(href, unsafe_allow_html=True)
+            else:
+                st.info(f"No events recorded yet for {team_name}.")
+        
+        # Show a summary of all drops for this team
+        if not st.session_state.drop_data.empty:
+            team_drops = st.session_state.drop_data[
+                st.session_state.drop_data['Team'] == team_name
+            ]
+            if not team_drops.empty:
+                st.subheader(f"All Drops for {team_name}")
+                
+                # Group drops by day and event
+                drop_summary = team_drops.groupby(['Day', 'Event_Number', 'Event_Name']).size().reset_index(name='Count')
+                
+                # Create a nicer display
+                for _, drop_group in drop_summary.iterrows():
+                    st.write(f"**Day {drop_group['Day']}, Event {drop_group['Event_Number']}: {drop_group['Event_Name']}** - {drop_group['Count']} drops")
+                    
+                    # Get the drops for this event
+                    event_drops = team_drops[
+                        (team_drops['Day'] == drop_group['Day']) &
+                        (team_drops['Event_Number'] == drop_group['Event_Number']) &
+                        (team_drops['Event_Name'] == drop_group['Event_Name'])
+                    ]
+                    
+                    # Display in a table
+                    drop_display = event_drops[['Participant_Name', 'Drop_Time']].sort_values('Drop_Time')
+                    drop_display.columns = ['Participant', 'Drop Time']
+                    st.table(drop_display)
+            else:
+                st.info(f"No drops recorded for {team_name}.")
+    else:
+        st.warning("Please complete team reshuffling first before recording events for Days 3-4.")
+    
+    # Display all recorded event data with team filter (outside the team selection)
+    st.write("---")
+    st.header("All Recorded Event Data for Days 3-4")
+    if not st.session_state.event_records.empty:
+        # Filter for Days 3-4 events
+        days_3_4_records = st.session_state.event_records[
+            st.session_state.event_records['Day'].isin([3, 4])
+        ]
+        
+        if 'Team' in days_3_4_records.columns and not days_3_4_records.empty:
+            # Get unique teams
+            all_teams = days_3_4_records['Team'].unique().tolist()
+            
+            # Create a multiselect to filter by team
+            selected_teams = st.multiselect(
+                "Filter by Teams",
+                options=all_teams,
+                default=all_teams,
+                key="days_3_4_team_filter"
+            )
+            
+            # Filter event records by selected teams
+            if selected_teams:
+                filtered_records = days_3_4_records[
+                    days_3_4_records['Team'].isin(selected_teams)
+                ]
+                
+                # Add day and event type filters
+                col1, col2 = st.columns(2)
+                with col1:
+                    days = st.multiselect(
+                        "Filter by Days",
+                        options=[3, 4],
+                        default=[3, 4],
+                        key="days_3_4_day_filter"
+                    )
+                with col2:
+                    events = st.multiselect(
+                        "Filter by Events",
+                        options=sorted(filtered_records['Event_Name'].unique().tolist()),
+                        default=sorted(filtered_records['Event_Name'].unique().tolist()),
+                        key="days_3_4_event_filter"
+                    )
+                
+                # Apply additional filters
+                if days:
+                    filtered_records = filtered_records[filtered_records['Day'].isin(days)]
+                if events:
+                    filtered_records = filtered_records[filtered_records['Event_Name'].isin(events)]
+                
+                # Display the filtered data
+                if not filtered_records.empty:
+                    # Select which columns to display
+                    display_cols = ['Team', 'Day', 'Event_Number', 'Event_Name', 'Distance_km',
+                                   'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
+                    st.dataframe(filtered_records[display_cols], use_container_width=True)
+                    
+                    # Add a download button for the filtered data
+                    csv = filtered_records.to_csv(index=False)
+                    b64 = base64.b64encode(csv.encode()).decode()
+                    href = f'<a href="data:file/csv;base64,{b64}" download="days_3_4_filtered_event_records.csv">Download Filtered Data as CSV</a>'
+                    st.markdown(href, unsafe_allow_html=True)
+                    
+                    # Show drop data for the filtered teams
+                    if not st.session_state.drop_data.empty:
+                        filtered_drops = st.session_state.drop_data[
+                            (st.session_state.drop_data['Team'].isin(selected_teams)) &
+                            (st.session_state.drop_data['Day'].isin([3, 4]))
+                        ]
+                        if days:
+                            filtered_drops = filtered_drops[filtered_drops['Day'].isin(days)]
+                        if events:
+                            filtered_drops = filtered_drops[filtered_drops['Event_Name'].isin(events)]
+                        
+                        if not filtered_drops.empty:
+                            st.subheader("Drops for Selected Teams/Events")
+                            
+                            # Group by team, day, event
+                            drop_summary = filtered_drops.groupby(['Team', 'Day', 'Event_Number', 'Event_Name']).size().reset_index(name='Drop_Count')
+                            
+                            # Display as a table
+                            drop_summary = drop_summary.sort_values(['Team', 'Day', 'Event_Number'])
+                            st.dataframe(drop_summary, use_container_width=True)
+                            
+                            # Option to view detailed drop data
+                            if st.checkbox("View detailed drop data", key="view_detailed_drops_days3-4"):
+                                st.dataframe(filtered_drops.sort_values(['Team', 'Day', 'Event_Number', 'Drop_Time']), use_container_width=True)
+                                
+                                # Add download button for drop data
+                                csv = filtered_drops.to_csv(index=False)
+                                b64 = base64.b64encode(csv.encode()).decode()
+                                href = f'<a href="data:file/csv;base64,{b64}" download="days_3_4_filtered_drop_data.csv">Download Drop Data</a>'
+                                st.markdown(href, unsafe_allow_html=True)
+                else:
+                    st.info("No records match the selected filters.")
+            else:
+                st.info("Please select at least one team to view records.")
+        else:
+            st.info("No event records available for Days 3-4 yet.")
+    else:
+        st.info("No event records available yet. Use the form above to record events.")
+
+    # Display combined statistics comparing Days 1-2 vs Days 3-4
+    st.write("---")
+    st.header("Comparison: Days 1-2 vs Days 3-4")
+    if not st.session_state.event_records.empty:
+        # Split data by days
+        days_1_2_data = st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])]
+        days_3_4_data = st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])]
+        
+        if not days_1_2_data.empty and not days_3_4_data.empty:
+            # Calculate summary statistics
+            stats_days_1_2 = {
+                'Average Difficulty': days_1_2_data['Actual_Difficulty'].mean(),
+                'Max Difficulty': days_1_2_data['Actual_Difficulty'].max(),
+                'Min Difficulty': days_1_2_data['Actual_Difficulty'].min(),
+                'Total Events': len(days_1_2_data),
+                'Total Drops': days_1_2_data['Drops'].sum()
+            }
+            
+            stats_days_3_4 = {
+                'Average Difficulty': days_3_4_data['Actual_Difficulty'].mean(),
+                'Max Difficulty': days_3_4_data['Actual_Difficulty'].max(),
+                'Min Difficulty': days_3_4_data['Actual_Difficulty'].min(),
+                'Total Events': len(days_3_4_data),
+                'Total Drops': days_3_4_data['Drops'].sum()
+            }
+            
+            # Create a DataFrame for display
+            comparison_df = pd.DataFrame({
+                'Statistic': stats_days_1_2.keys(),
+                'Days 1-2': stats_days_1_2.values(),
+                'Days 3-4': stats_days_3_4.values(),
+                'Change': [stats_days_3_4[k] - stats_days_1_2[k] for k in stats_days_1_2.keys()]
+            })
+            
+            # Format the numeric columns
+            for col in ['Days 1-2', 'Days 3-4', 'Change']:
+                comparison_df[col] = comparison_df[col].apply(lambda x: f"{x:.2f}" if isinstance(x, float) else f"{x}")
+            
+            # Add a percent change column for applicable metrics
+            comparison_df['Percent Change'] = ''
+            for i, stat in enumerate(stats_days_1_2.keys()):
+                if stat in ['Average Difficulty', 'Max Difficulty', 'Min Difficulty'] and stats_days_1_2[stat] != 0:
+                    pct_change = (stats_days_3_4[stat] - stats_days_1_2[stat]) / stats_days_1_2[stat] * 100
+                    comparison_df.loc[i, 'Percent Change'] = f"{pct_change:+.1f}%"
+            
+            # Display the comparison
+            st.dataframe(comparison_df, use_container_width=True)
+            
+            # Create a visualization of the comparison
+            import plotly.express as px
+            
+            # Prepare data for visualization
+            viz_data = []
+            for day in [1, 2, 3, 4]:
+                day_data = st.session_state.event_records[st.session_state.event_records['Day'] == day]
+                if not day_data.empty:
+                    viz_data.append({
+                        'Day': day,
+                        'Average Difficulty': day_data['Actual_Difficulty'].mean(),
+                        'Total Events': len(day_data),
+                        'Total Drops': day_data['Drops'].sum()
+                    })
+            
+            if viz_data:
+                viz_df = pd.DataFrame(viz_data)
+                
+                # Create a bar chart for average difficulty by day
+                fig = px.bar(
+                    viz_df,
+                    x='Day',
+                    y='Average Difficulty',
+                    title='Average Difficulty by Day',
+                    labels={'Average Difficulty': 'Average Difficulty Score'},
+                    color='Day',
+                    color_continuous_scale='Viridis'
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Create a line chart for drops by day
+                fig2 = px.line(
+                    viz_df,
+                    x='Day',
+                    y='Total Drops',
+                    title='Total Drops by Day',
+                    labels={'Total Drops': 'Number of Drops'},
+                    markers=True
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+        else:
+            if days_1_2_data.empty:
+                st.warning("No data available for Days 1-2. Please record events for Days 1-2 first.")
+            else:
+                st.warning("No data available for Days 3-4 yet. Please record events for Days 3-4.")
+    else:
+        st.info("No event records available for comparison yet.")
+        
+                                        
+# Tab 8: Final Scores
+with tabs[7]:
+    st.header("Final Difficulty Scores")
     if not st.session_state.event_records.empty:
         # Calculate final scores for each team
         if st.session_state.roster_data is not None and len(st.session_state.event_records) > 0:
@@ -2679,11 +3997,9 @@ with tabs[6]:
             days_1_2_data = st.session_state.event_records[
                 st.session_state.event_records['Day'].isin([1, 2])
             ]
-            
             # Get original teams from roster data
             original_teams = st.session_state.roster_data[['Candidate_Name', 'Roster_Number', 'Initial_Team']].copy()
             original_teams['Team_Phase'] = 'Days 1-2'
-            
             # Calculate difficulty scores by team for days 1-2
             if not days_1_2_data.empty:
                 if 'Team' in days_1_2_data.columns:
@@ -2694,20 +4010,16 @@ with tabs[6]:
                     # Calculate overall difficulty scores by day
                     team_difficulty_days_1_2 = days_1_2_data.groupby('Day')['Actual_Difficulty'].mean().reset_index()
                     team_difficulty_days_1_2['Team_Phase'] = 'Days 1-2'
-                
                 st.subheader("Team Difficulty Scores for Days 1-2")
                 st.dataframe(team_difficulty_days_1_2)
-            
             # Calculate team scores for days 3-4
             days_3_4_data = st.session_state.event_records[
                 st.session_state.event_records['Day'].isin([3, 4])
             ]
-            
             if not days_3_4_data.empty and st.session_state.reshuffled_teams is not None:
                 # Reshuffled teams data
                 reshuffled_team_data = st.session_state.reshuffled_teams.copy()
                 reshuffled_team_data['Team_Phase'] = 'Days 3-4'
-                
                 if 'Team' in days_3_4_data.columns:
                     # Calculate team-specific difficulty scores
                     team_difficulty_days_3_4 = days_3_4_data.groupby(['Team', 'Day'])['Actual_Difficulty'].mean().reset_index()
@@ -2716,16 +4028,13 @@ with tabs[6]:
                     # Calculate overall difficulty scores by day
                     team_difficulty_days_3_4 = days_3_4_data.groupby('Day')['Actual_Difficulty'].mean().reset_index()
                     team_difficulty_days_3_4['Team_Phase'] = 'Days 3-4'
-                
                 st.subheader("Team Difficulty Scores for Days 3-4")
                 st.dataframe(team_difficulty_days_3_4)
-                
                 # Combine all data for final scores
                 all_team_difficulties = pd.concat([
                     team_difficulty_days_1_2,
                     team_difficulty_days_3_4
                 ])
-                
                 # Calculate final team scores across all days
                 if 'Team' in all_team_difficulties.columns:
                     final_team_scores = all_team_difficulties.groupby('Team')['Actual_Difficulty'].mean().reset_index()
@@ -2733,9 +4042,30 @@ with tabs[6]:
                     final_team_scores = final_team_scores.sort_values('Average_Difficulty', ascending=False)
                 else:
                     final_team_scores = all_team_difficulties.groupby('Day')['Actual_Difficulty'].mean().reset_index()
-                
                 st.subheader("Final Team Difficulty Scores (All Days)")
                 st.dataframe(final_team_scores)
+                
+                # Visualize final team scores
+                if 'Team' in final_team_scores.columns:
+                    fig = px.bar(
+                        final_team_scores, 
+                        x='Team', 
+                        y='Average_Difficulty',
+                        title='Final Team Difficulty Scores',
+                        labels={'Average_Difficulty': 'Average Difficulty', 'Team': 'Team'},
+                        color='Average_Difficulty',
+                        color_continuous_scale='Viridis'
+                    )
+                    # Add a line for overall average
+                    overall_avg = final_team_scores['Average_Difficulty'].mean()
+                    fig.add_hline(
+                        y=overall_avg,
+                        line_dash="dash",
+                        line_color="red",
+                        annotation_text=f"Overall Avg: {overall_avg:.2f}",
+                        annotation_position="top right"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 # Calculate individual participant scores
                 st.subheader("Individual Participant Performance")
@@ -2743,7 +4073,6 @@ with tabs[6]:
                 
                 # Create a combined dataframe with all participants and their teams
                 all_participants = []
-                
                 # Add participants from Days 1-2
                 for _, row in original_teams.iterrows():
                     participant_data = {
@@ -2752,14 +4081,12 @@ with tabs[6]:
                         'Team_Days_1_2': row['Initial_Team']
                     }
                     all_participants.append(participant_data)
-                
                 all_participants_df = pd.DataFrame(all_participants)
                 
                 # Add team assignments for Days 3-4
                 if st.session_state.reshuffled_teams is not None:
                     reshuffled_assignments = st.session_state.reshuffled_teams[['Candidate_Name', 'New_Team']].copy()
                     reshuffled_assignments.columns = ['Participant_Name', 'Team_Days_3_4']
-                    
                     # Merge with participant data
                     all_participants_df = pd.merge(
                         all_participants_df,
@@ -2768,8 +4095,45 @@ with tabs[6]:
                         how='left'
                     )
                 
-                # Display participant team assignments
-                st.dataframe(all_participants_df)
+                # Add difficulty scores for each phase
+                if 'Team' in team_difficulty_days_1_2.columns:
+                    # Calculate average difficulty by team for days 1-2
+                    team_avg_days_1_2 = team_difficulty_days_1_2.groupby('Team')['Actual_Difficulty'].mean().reset_index()
+                    team_avg_days_1_2.columns = ['Team', 'Avg_Difficulty_Days_1_2']
+                    
+                    # Map to participants
+                    team_map_days_1_2 = dict(zip(team_avg_days_1_2['Team'], team_avg_days_1_2['Avg_Difficulty_Days_1_2']))
+                    all_participants_df['Difficulty_Days_1_2'] = all_participants_df['Team_Days_1_2'].map(team_map_days_1_2)
+                
+                if 'Team' in team_difficulty_days_3_4.columns:
+                    # Calculate average difficulty by team for days 3-4
+                    team_avg_days_3_4 = team_difficulty_days_3_4.groupby('Team')['Actual_Difficulty'].mean().reset_index()
+                    team_avg_days_3_4.columns = ['Team', 'Avg_Difficulty_Days_3_4']
+                    
+                    # Map to participants
+                    team_map_days_3_4 = dict(zip(team_avg_days_3_4['Team'], team_avg_days_3_4['Avg_Difficulty_Days_3_4']))
+                    all_participants_df['Difficulty_Days_3_4'] = all_participants_df['Team_Days_3_4'].map(team_map_days_3_4)
+                
+                # Calculate overall average difficulty
+                if 'Difficulty_Days_1_2' in all_participants_df.columns and 'Difficulty_Days_3_4' in all_participants_df.columns:
+                    all_participants_df['Overall_Difficulty'] = (all_participants_df['Difficulty_Days_1_2'] + all_participants_df['Difficulty_Days_3_4']) / 2
+                    
+                    # Sort by overall difficulty
+                    all_participants_df = all_participants_df.sort_values('Overall_Difficulty', ascending=False)
+                
+                # Display participant performance
+                st.dataframe(all_participants_df, use_container_width=True)
+                
+                # Add download buttons
+                csv_final_teams = final_team_scores.to_csv(index=False)
+                b64_teams = base64.b64encode(csv_final_teams.encode()).decode()
+                href_teams = f'<a href="data:file/csv;base64,{b64_teams}" download="final_team_scores.csv">Download Final Team Scores</a>'
+                st.markdown(href_teams, unsafe_allow_html=True)
+                
+                csv_participants = all_participants_df.to_csv(index=False)
+                b64_participants = base64.b64encode(csv_participants.encode()).decode()
+                href_participants = f'<a href="data:file/csv;base64,{b64_participants}" download="participant_performance.csv">Download Participant Performance Data</a>'
+                st.markdown(href_participants, unsafe_allow_html=True)
             else:
                 st.warning("Data for Days 3-4 not available yet or teams haven't been reshuffled.")
         else:
@@ -2777,19 +4141,16 @@ with tabs[6]:
     else:
         st.warning("No event data available. Please record events first.")
 
-# Tab 8: Visualizations
-with tabs[7]:
+# Tab 9: Visualizations
+with tabs[8]:
     st.header("Visualizations")
-    
     if not st.session_state.event_records.empty:
         # 1. Difficulty score trends over 4 days
         st.subheader("Difficulty Score Trends Over 4 Days")
-        
         difficulty_trends = st.session_state.event_records.groupby('Day')[['Initial_Difficulty', 'Actual_Difficulty']].mean().reset_index()
-        
         fig1 = px.line(
-            difficulty_trends, 
-            x='Day', 
+            difficulty_trends,
+            x='Day',
             y=['Initial_Difficulty', 'Actual_Difficulty'],
             title='Difficulty Score Trends Over 4 Days',
             labels={'value': 'Difficulty Score', 'variable': 'Type'},
@@ -2800,11 +4161,9 @@ with tabs[7]:
         # 2. Team difficulty comparison (if team data is available)
         if 'Team' in st.session_state.event_records.columns:
             st.subheader("Team Difficulty Comparison")
-            
             # Calculate average difficulty by team
             team_difficulty = st.session_state.event_records.groupby('Team')['Actual_Difficulty'].mean().reset_index()
             team_difficulty = team_difficulty.sort_values('Actual_Difficulty', ascending=False)
-            
             fig_team = px.bar(
                 team_difficulty,
                 x='Team',
@@ -2817,7 +4176,6 @@ with tabs[7]:
         # 3. Team reshuffling visualization (if teams have been reshuffled)
         if st.session_state.reshuffled_teams is not None:
             st.subheader("Team Composition Before and After Reshuffling")
-            
             # Get original team composition
             original_team_counts = st.session_state.roster_data.groupby('Initial_Team').size().reset_index(name='Count')
             original_team_counts['Phase'] = 'Before Reshuffling (Days 1-2)'
@@ -2844,12 +4202,10 @@ with tabs[7]:
             
             # 4. Difficulty score distributions by team
             st.subheader("Difficulty Score Distribution by Team")
-            
             # For this visualization, we need to combine team information with event scores
             # For Days 1-2, use original teams
             if not st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])].empty:
                 days_1_2_events = st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])]
-                
                 # Create a distribution plot for Days 1-2
                 if 'Team' in days_1_2_events.columns:
                     fig3 = px.box(
@@ -2872,7 +4228,6 @@ with tabs[7]:
             # For Days 3-4, use reshuffled teams
             if st.session_state.reshuffled_teams is not None and not st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])].empty:
                 days_3_4_events = st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])]
-                
                 # Create a distribution plot for Days 3-4
                 if 'Team' in days_3_4_events.columns:
                     fig4 = px.box(
@@ -2894,7 +4249,6 @@ with tabs[7]:
         
         # 5. Final difficulty scores grouped by day
         st.subheader("Final Difficulty Scores by Day")
-        
         if not st.session_state.event_records.empty:
             # Calculate average difficulty scores per day
             day_avg_difficulty = st.session_state.event_records.groupby('Day')['Actual_Difficulty'].mean().reset_index()
@@ -2915,7 +4269,6 @@ with tabs[7]:
             
             # Drops by day and event
             drops_by_day_event = st.session_state.drop_data.groupby(['Day', 'Event_Number']).size().reset_index(name='Number_of_Drops')
-            
             fig6 = px.bar(
                 drops_by_day_event,
                 x='Day',
@@ -2931,7 +4284,6 @@ with tabs[7]:
             if 'Team' in st.session_state.drop_data.columns:
                 drops_by_team = st.session_state.drop_data.groupby('Team').size().reset_index(name='Number_of_Drops')
                 drops_by_team = drops_by_team.sort_values('Number_of_Drops', ascending=False)
-                
                 fig7 = px.bar(
                     drops_by_team,
                     x='Team',
@@ -2940,175 +4292,182 @@ with tabs[7]:
                     labels={'Number_of_Drops': 'Number of Drops'}
                 )
                 st.plotly_chart(fig7, use_container_width=True)
+                
+                # Drops by team and day
+                drops_by_team_day = st.session_state.drop_data.groupby(['Team', 'Day']).size().reset_index(name='Number_of_Drops')
+                fig8 = px.bar(
+                    drops_by_team_day,
+                    x='Team',
+                    y='Number_of_Drops',
+                    color='Day',
+                    barmode='group',
+                    title='Number of Drops by Team and Day',
+                    labels={'Number_of_Drops': 'Number of Drops'}
+                )
+                st.plotly_chart(fig8, use_container_width=True)
+        
+        # 7. Event comparison across days
+        st.subheader("Event Comparison Across Days")
+        
+        # Get event names that appear in multiple days
+        event_days = st.session_state.event_records.groupby('Event_Name')['Day'].nunique()
+        repeating_events = event_days[event_days > 1].index.tolist()
+        
+        if repeating_events:
+            # Filter for these events
+            repeating_events_data = st.session_state.event_records[
+                st.session_state.event_records['Event_Name'].isin(repeating_events)
+            ]
+            
+            # Calculate average difficulty by event and day
+            event_day_difficulty = repeating_events_data.groupby(['Event_Name', 'Day'])['Actual_Difficulty'].mean().reset_index()
+            
+            # Plot
+            fig9 = px.line(
+                event_day_difficulty,
+                x='Day',
+                y='Actual_Difficulty',
+                color='Event_Name',
+                markers=True,
+                title='Event Difficulty Comparison Across Days',
+                labels={'Actual_Difficulty': 'Average Difficulty', 'Day': 'Day'}
+            )
+            st.plotly_chart(fig9, use_container_width=True)
+        else:
+            st.info("No events were repeated across multiple days.")
+        
+        # 8. Equipment weight vs difficulty correlation
+        st.subheader("Equipment Weight vs Difficulty Correlation")
+        
+        # Create a scatter plot
+        fig10 = px.scatter(
+            st.session_state.event_records,
+            x='Equipment_Weight',
+            y='Actual_Difficulty',
+            color='Day',
+            hover_data=['Event_Name', 'Team'],
+            title='Equipment Weight vs Difficulty',
+            labels={
+                'Equipment_Weight': 'Equipment Weight (lbs)',
+                'Actual_Difficulty': 'Actual Difficulty',
+                'Day': 'Day'
+            }
+        )
+        
+        # Add trendline
+        fig10.update_layout(
+            xaxis_title="Equipment Weight (lbs)",
+            yaxis_title="Actual Difficulty"
+        )
+        
+        # Add regression line
+        fig10.update_traces(marker=dict(size=10))
+        
+        st.plotly_chart(fig10, use_container_width=True)
+        
+        # 9. Distance vs difficulty correlation
+        st.subheader("Distance vs Difficulty Correlation")
+        
+        # Create a scatter plot
+        fig11 = px.scatter(
+            st.session_state.event_records,
+            x='Distance_km',
+            y='Actual_Difficulty',
+            color='Day',
+            hover_data=['Event_Name', 'Team'],
+            title='Distance vs Difficulty',
+            labels={
+                'Distance_km': 'Distance (km)',
+                'Actual_Difficulty': 'Actual Difficulty',
+                'Day': 'Day'
+            }
+        )
+        
+        # Add trendline
+        fig11.update_layout(
+            xaxis_title="Distance (km)",
+            yaxis_title="Actual Difficulty"
+        )
+        
+        # Add regression line
+        fig11.update_traces(marker=dict(size=10))
+        
+        st.plotly_chart(fig11, use_container_width=True)
+        
+        # 10. Heat map of difficulty by team and day
+        if 'Team' in st.session_state.event_records.columns:
+            st.subheader("Heat Map of Difficulty by Team and Day")
+            
+            # Calculate average difficulty by team and day
+            heatmap_data = st.session_state.event_records.groupby(['Team', 'Day'])['Actual_Difficulty'].mean().reset_index()
+            
+            # Pivot the data for the heat map
+            heatmap_pivot = heatmap_data.pivot(index='Team', columns='Day', values='Actual_Difficulty')
+            
+            # Create heat map
+            fig12 = px.imshow(
+                heatmap_pivot,
+                labels=dict(x="Day", y="Team", color="Difficulty"),
+                x=heatmap_pivot.columns,
+                y=heatmap_pivot.index,
+                color_continuous_scale='Viridis',
+                title='Difficulty Heat Map by Team and Day'
+            )
+            
+            # Customize layout
+            fig12.update_layout(
+                xaxis_title="Day",
+                yaxis_title="Team"
+            )
+            
+            # Add text annotations with values
+            for i in range(len(heatmap_pivot.index)):
+                for j in range(len(heatmap_pivot.columns)):
+                    value = heatmap_pivot.iloc[i, j]
+                    if not pd.isna(value):  # Only add annotation if value is not NaN
+                        fig12.add_annotation(
+                            x=heatmap_pivot.columns[j],
+                            y=heatmap_pivot.index[i],
+                            text=f"{value:.2f}",
+                            showarrow=False,
+                            font=dict(color="white" if value > 3 else "black")
+                        )
+            
+            st.plotly_chart(fig12, use_container_width=True)
+        
+        # 11. Download all visualization data
+        st.subheader("Download Visualization Data")
+        
+        # Prepare data for download
+        viz_data = {
+            'difficulty_trends': difficulty_trends,
+            'day_avg_difficulty': day_avg_difficulty
+        }
+        
+        if 'Team' in st.session_state.event_records.columns:
+            viz_data['team_difficulty'] = team_difficulty
+        
+        if not st.session_state.drop_data.empty:
+            viz_data['drops_by_day_event'] = drops_by_day_event
+            if 'Team' in st.session_state.drop_data.columns:
+                viz_data['drops_by_team'] = drops_by_team
+                viz_data['drops_by_team_day'] = drops_by_team_day
+        
+        if repeating_events:
+            viz_data['event_day_difficulty'] = event_day_difficulty
+        
+        # Create a zip file with all visualization data
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as zip_file:
+            for name, df in viz_data.items():
+                zip_file.writestr(f"{name}.csv", df.to_csv(index=False))
+        
+        buffer.seek(0)
+        b64 = base64.b64encode(buffer.read()).decode()
+        href = f'<a href="data:application/zip;base64,{b64}" download="visualization_data.zip">Download All Visualization Data</a>'
+        st.markdown(href, unsafe_allow_html=True)
     else:
         st.warning("No event data available for visualization. Please record events first.")
-
-# Tab 9: Predictive Analytics
-with tabs[8]:
-    st.header("Predictive Analytics")
-    if st.session_state.reshuffled_teams is not None and st.session_state.events_data is not None:
-        st.subheader("Team Success Prediction")
-        col1, col2 = st.columns(2)
-        with col1:
-            # Select team to analyze - ADD A UNIQUE KEY HERE
-            team_options = st.session_state.reshuffled_teams['New_Team'].unique()
-            selected_team = st.selectbox(
-                "Select Team", 
-                options=team_options,
-                key="predictive_analytics_team_select"  # Add this unique key
-            )
-            
-            # Get team composition
-            team_composition = st.session_state.reshuffled_teams[
-                st.session_state.reshuffled_teams['New_Team'] == selected_team
-            ]
-            st.write(f"Team Composition ({len(team_composition)} members):")
-            st.write(f"OF Members: {sum(team_composition['Candidate_Type'] == 'OF')}")
-            st.write(f"ADE Members: {sum(team_composition['Candidate_Type'] == 'ADE')}")
-        
-        with col2:
-            # Select event to predict
-            day_options = [3, 4]
-            selected_day = st.selectbox("Select Day", options=day_options)
-            
-            event_options = st.session_state.events_data[
-                st.session_state.events_data['Day'] == selected_day
-            ]['Event_Name'].unique()
-            
-            selected_event = st.selectbox("Select Event", options=event_options)
-            
-            # Get event details
-            event_details = st.session_state.events_data[
-                (st.session_state.events_data['Day'] == selected_day) &
-                (st.session_state.events_data['Event_Name'] == selected_event)
-            ].iloc[0]
-            
-            # Calculate event difficulty
-            heat_category = st.selectbox("Heat Category", options=[1, 2, 3, 4, 5])
-            
-            # Calculate temperature multiplier
-            temp_multiplier = 1.0
-            if heat_category == 4:
-                temp_multiplier = 1.15
-            elif heat_category == 5:
-                temp_multiplier = 1.3
-            
-            # Calculate initial difficulty
-            initial_difficulty = calculate_initial_difficulty(
-                temp_multiplier, 
-                event_details['Equipment_Weight'] * event_details['Number_of_Equipment'],
-                event_details['Initial_Participants'],
-                event_details['Distance'],
-                time_str_to_minutes(event_details['Time_Limit'])
-            )
-            
-            st.write(f"Event Difficulty: {initial_difficulty:.2f}")
-        
-        # Get past performance data if available
-        past_performance = None
-        if not st.session_state.event_records.empty:
-            past_performance = st.session_state.event_records[
-                st.session_state.event_records['Day'].isin([1, 2])
-            ]
-            
-            # If we have team-specific data, filter for this team's original members
-            if 'Team' in past_performance.columns:
-                # Get original team for each member of the current team
-                member_original_teams = []
-                for _, member in team_composition.iterrows():
-                    member_name = member['Candidate_Name']
-                    if member_name in st.session_state.roster_data['Candidate_Name'].values:
-                        original_team = st.session_state.roster_data[
-                            st.session_state.roster_data['Candidate_Name'] == member_name
-                        ]['Initial_Team'].values[0]
-                        member_original_teams.append(original_team)
-                
-                # Filter past performance for these teams
-                if member_original_teams:
-                    past_performance = past_performance[
-                        past_performance['Team'].isin(member_original_teams)
-                    ]
-        
-        # Predict success rate
-        success_rate = predict_team_success(team_composition, initial_difficulty, past_performance)
-        
-        # Display prediction
-        st.subheader("Prediction Results")
-        
-        success_percentage = success_rate * 100
-        
-        # Create a gauge chart
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=success_percentage,
-            title={'text': "Predicted Success Rate"},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "green" if success_percentage > 70 else "yellow" if success_percentage > 50 else "red"},
-                'steps': [
-                    {'range': [0, 50], 'color': "lightgray"},
-                    {'range': [50, 70], 'color': "gray"},
-                    {'range': [70, 100], 'color': "darkgray"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 70
-                }
-            }
-        ))
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Add interpretation
-        if success_percentage > 80:
-            st.success("This team has a high likelihood of success for this event.")
-        elif success_percentage > 60:
-            st.info("This team has a moderate likelihood of success for this event.")
-        else:
-            st.warning("This team may struggle with this event. Consider adjusting the event difficulty or team composition.")
-        
-        # Provide recommendations
-        st.subheader("Recommendations")
-        
-        if success_percentage < 70:
-            # Suggest difficulty adjustments
-            st.write("Consider making one of the following adjustments:")
-            
-            # Calculate adjustments needed for 75% success rate
-            target_difficulty = (team_composition.shape[0] * 0.9) * (1/3) - initial_difficulty
-            
-            # Suggest weight reduction
-            weight_reduction = (initial_difficulty - target_difficulty) / (
-                (event_details['Distance'] / time_str_to_minutes(event_details['Time_Limit'])) * 
-                (temp_multiplier / event_details['Initial_Participants'])
-            )
-            
-            if weight_reduction > 0:
-                st.write(f"- Reduce equipment weight by approximately {abs(weight_reduction):.1f} lbs total")
-            
-            # Suggest distance reduction
-            distance_reduction = (initial_difficulty - target_difficulty) / (
-                (event_details['Equipment_Weight'] * event_details['Number_of_Equipment'] / 
-                 event_details['Initial_Participants']) * 
-                (temp_multiplier / time_str_to_minutes(event_details['Time_Limit']))
-            )
-            
-            if distance_reduction > 0:
-                st.write(f"- Reduce distance by approximately {abs(distance_reduction):.2f} km")
-            
-            # Suggest time extension
-            time_extension = time_str_to_minutes(event_details['Time_Limit']) * (
-                initial_difficulty / target_difficulty - 1
-            )
-            
-            if time_extension > 0:
-                extended_time = time_str_to_minutes(event_details['Time_Limit']) + time_extension
-                st.write(f"- Extend time limit to approximately {minutes_to_mmss(extended_time)}")
-        else:
-            st.write("No adjustments needed. The team is well-prepared for this event.")
-    else:
-        st.warning("Please upload roster data, events data, and reshuffle teams first.")
 
 # Add export functionality for all data
 st.sidebar.header("Export Data")
