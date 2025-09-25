@@ -389,8 +389,8 @@ if available_sessions:
 else:
     st.sidebar.info("No saved sessions found on server.")
 
-# Create tabs for different sections (with Predictive Analytics tab removed)
-tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording (Days 1-2)", "Drop Management", "Team Reshuffling",
+# Create tabs without the redundant Drop Management tab
+tabs = st.tabs(["Data Upload", "Set 4 Day Plan", "Event Recording (Days 1-2)", "Team Reshuffling",
                 "Adjust Difficulty", "Event Recording (Days 3-4)", "Final Scores", "Visualizations"])
 
 # Tab 1: Data Upload
@@ -1915,221 +1915,9 @@ with tabs[2]:
             st.dataframe(st.session_state.event_records, use_container_width=True)
     else:
         st.info("No event records available yet. Use the form above to record events.")
-                
-# Tab 4: Drop Management
-with tabs[3]:
-    st.header("Drop Management")
-    
-    # First, select the team for which we're recording drops
-    if st.session_state.roster_data is not None:
-        # Get unique teams from roster data
-        team_options = st.session_state.roster_data['Initial_Team'].unique().tolist()
-        
-        # After Day 2, include reshuffled teams if available
-        if st.session_state.reshuffled_teams is not None:
-            # Get the days that have been recorded so far
-            recorded_days = []
-            if not st.session_state.event_records.empty:
-                recorded_days = st.session_state.event_records['Day'].unique().tolist()
-            
-            # If Days 1-2 have been recorded, include new teams for Days 3-4
-            if 1 in recorded_days and 2 in recorded_days:
-                new_team_options = st.session_state.reshuffled_teams['New_Team'].unique().tolist()
-                team_options.extend([f"{team} (Days 3-4)" for team in new_team_options])
-        
-        selected_team = st.selectbox("Select Team", options=team_options, key="drop_team_select")
-        
-        # Determine if we're using original or reshuffled teams
-        using_reshuffled = "(Days 3-4)" in selected_team
-        
-        # Extract the base team name
-        if using_reshuffled:
-            team_name = selected_team.replace(" (Days 3-4)", "")
-        else:
-            team_name = selected_team
-    else:
-        st.warning("Please upload roster data first to select a team.")
-        selected_team = None
-        team_name = None
-    
-    # Create a form for recording participant drops
-    if selected_team is not None:
-        with st.form("drop_data_form"):
-            # Get participants for the selected team
-            if using_reshuffled:
-                # Get participants from reshuffled teams
-                team_participants = st.session_state.reshuffled_teams[
-                    st.session_state.reshuffled_teams['New_Team'] == team_name
-                ]['Candidate_Name'].tolist()
-            else:
-                # Get participants from original roster
-                team_participants = st.session_state.roster_data[
-                    st.session_state.roster_data['Initial_Team'] == team_name
-                ]['Candidate_Name'].tolist()
-            
-            participant = st.selectbox(
-                "Participant", 
-                options=team_participants
-            )
-            
-            # Get roster number for the participant
-            if using_reshuffled:
-                roster_number = st.session_state.reshuffled_teams[
-                    st.session_state.reshuffled_teams['Candidate_Name'] == participant
-                ]['Roster_Number'].values[0]
-            else:
-                roster_number = st.session_state.roster_data[
-                    st.session_state.roster_data['Candidate_Name'] == participant
-                ]['Roster_Number'].values[0]
-            
-            # Select day based on team (Days 1-2 for original teams, Days 3-4 for reshuffled)
-            day_options = [1, 2] if not using_reshuffled else [3, 4]
-            day = st.selectbox("Day", options=day_options)
-            
-            # If we have a 4-day plan, use it to filter event options
-            has_four_day_plan = ('structured_four_day_plan' in st.session_state and 
-                                st.session_state.structured_four_day_plan is not None and
-                                isinstance(st.session_state.structured_four_day_plan, pd.DataFrame) and
-                                not st.session_state.structured_four_day_plan.empty)
-            
-            if has_four_day_plan:
-                try:
-                    day_events = st.session_state.structured_four_day_plan[
-                        st.session_state.structured_four_day_plan['Day'] == day
-                    ]
-                    if not day_events.empty:
-                        event_number = st.selectbox(
-                            "Event Number",
-                            options=day_events['Event_Number'].unique()
-                        )
-                        # Get the event details for this day and event number
-                        event_details = day_events[
-                            day_events['Event_Number'] == event_number
-                        ]
-                        if not event_details.empty:
-                            event_name = st.selectbox(
-                                "Event Name",
-                                options=event_details['Event_Name'].unique()
-                            )
-                        else:
-                            # Fallback to regular event selection
-                            event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                            event_name = st.text_input("Event Name")
-                    else:
-                        # Fallback to regular event selection
-                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                        event_name = st.text_input("Event Name")
-                except Exception as e:
-                    st.error(f"Error accessing 4-day plan: {str(e)}")
-                    event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                    event_name = st.text_input("Event Name")
-            else:
-                # Fallback to regular event selection
-                # Filter events for the selected day
-                if st.session_state.events_data is not None:
-                    day_events = st.session_state.events_data[
-                        st.session_state.events_data['Day'] == day
-                    ]
-                    if not day_events.empty:
-                        event_number = st.selectbox(
-                            "Event Number",
-                            options=day_events['Event_Number'].unique()
-                        )
-                        # Filter further by event number
-                        event_options = day_events[
-                            day_events['Event_Number'] == event_number
-                        ]['Event_Name'].unique()
-                        event_name = st.selectbox("Event Name", options=event_options)
-                    else:
-                        event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                        event_name = st.text_input("Event Name")
-                else:
-                    event_number = st.selectbox("Event Number", options=[1, 2, 3])
-                    event_name = st.text_input("Event Name")
-            
-            # Check if there's an event record for this team and event
-            if not st.session_state.event_records.empty and 'Team' in st.session_state.event_records.columns:
-                team_event = st.session_state.event_records[
-                    (st.session_state.event_records['Team'] == team_name) &
-                    (st.session_state.event_records['Day'] == day) &
-                    (st.session_state.event_records['Event_Number'] == event_number) &
-                    (st.session_state.event_records['Event_Name'] == event_name)
-                ]
-                
-                if not team_event.empty:
-                    # Display event start time for reference
-                    st.text(f"Event Start Time: {team_event.iloc[0]['Start_Time']}")
-            
-            # Input drop time in military format
-            drop_time = st.text_input("Drop Time (HH:MM)", placeholder="e.g., 09:45")
-            
-            submit_drop = st.form_submit_button("Record Drop")
-            
-            if submit_drop:
-                # Add to drop data
-                new_drop = {
-                    'Team': team_name,
-                    'Participant_Name': participant,
-                    'Roster_Number': roster_number,
-                    'Event_Name': event_name,
-                    'Drop_Time': drop_time,
-                    'Day': day,
-                    'Event_Number': event_number
-                }
-                
-                st.session_state.drop_data = pd.concat([
-                    st.session_state.drop_data, 
-                    pd.DataFrame([new_drop])
-                ], ignore_index=True)
-                
-                st.success(f"Drop recorded successfully for {participant} from {team_name} during {event_name}")
-                
-                # Automatically save the session after recording data
-                save_session_state()
-        
-        # Display team-specific drop data
-        if not st.session_state.drop_data.empty and 'Team' in st.session_state.drop_data.columns:
-            st.subheader(f"Recorded Drops for {team_name}")
-            
-            # Filter drop data for the selected team
-            team_drops = st.session_state.drop_data[
-                st.session_state.drop_data['Team'] == team_name
-            ]
-            
-            if not team_drops.empty:
-                st.dataframe(team_drops)
-            else:
-                st.info(f"No drops recorded yet for {team_name}.")
-    
-    # Display all drop data with team filter
-    if not st.session_state.drop_data.empty:
-        st.subheader("All Recorded Drop Data")
-        
-        if 'Team' in st.session_state.drop_data.columns:
-            # Get unique teams
-            all_teams = st.session_state.drop_data['Team'].unique().tolist()
-            
-            # Create a multiselect to filter by team
-            selected_teams = st.multiselect(
-                "Filter by Teams",
-                options=all_teams,
-                default=all_teams,
-                key="drop_team_filter"
-            )
-            
-            # Filter drop data by selected teams
-            if selected_teams:
-                filtered_drops = st.session_state.drop_data[
-                    st.session_state.drop_data['Team'].isin(selected_teams)
-                ]
-                st.dataframe(filtered_drops)
-            else:
-                st.dataframe(st.session_state.drop_data)
-        else:
-            st.dataframe(st.session_state.drop_data)
 
-# Tab 5: Team Reshuffling
-with tabs[4]:
+# Tab 4: Team Reshuffling
+with tabs[3]:
     st.header("Team Reshuffling After Day 2")
     
     # Check if we have data for Days 1 and 2
@@ -2205,9 +1993,8 @@ with tabs[4]:
     else:
         st.warning("No event data available. Please record events for Days 1 and 2 first.")
 
-# Tab 6: Adjust Difficulty
-# Tab 6: Adjust Difficulty
-with tabs[5]:
+# Tab 5: Adjust Difficulty
+with tabs[4]:
     st.header("Adjust Difficulty for Days 3-4")
     
     # Check if teams have been reshuffled
@@ -2667,8 +2454,8 @@ with tabs[5]:
     else:
         st.warning("Please reshuffle teams and record events for Days 1-2 before adjusting difficulty for Days 3-4.")
 
-# Tab 7: Event Recording (Days 3-4)
-with tabs[6]:
+# Tab 6: Event Recording (Days 3-4)
+with tabs[5]:
     st.header("Event Data Recording (Days 3-4)")
     
     # First, select the team for which we're recording data
@@ -3987,8 +3774,8 @@ with tabs[6]:
         st.info("No event records available for comparison yet.")
         
                                         
-# Tab 8: Final Scores
-with tabs[7]:
+# Tab 7: Final Scores
+with tabs[6]:
     st.header("Final Difficulty Scores")
     if not st.session_state.event_records.empty:
         # Calculate final scores for each team
@@ -4141,331 +3928,225 @@ with tabs[7]:
     else:
         st.warning("No event data available. Please record events first.")
 
-# Tab 9: Visualizations
-with tabs[8]:
+# Tab 8: Visualizations
+with tabs[7]:
     st.header("Visualizations")
     if not st.session_state.event_records.empty:
-        # 1. Difficulty score trends over 4 days
-        st.subheader("Difficulty Score Trends Over 4 Days")
-        difficulty_trends = st.session_state.event_records.groupby('Day')[['Initial_Difficulty', 'Actual_Difficulty']].mean().reset_index()
-        fig1 = px.line(
-            difficulty_trends,
-            x='Day',
-            y=['Initial_Difficulty', 'Actual_Difficulty'],
-            title='Difficulty Score Trends Over 4 Days',
-            labels={'value': 'Difficulty Score', 'variable': 'Type'},
-            markers=True
-        )
-        st.plotly_chart(fig1, use_container_width=True)
+        # Create tabs within the visualization section to organize content
+        viz_tabs = st.tabs(["Difficulty Trends", "Team Performance", "Drops Analysis", "Correlations"])
         
-        # 2. Team difficulty comparison (if team data is available)
-        if 'Team' in st.session_state.event_records.columns:
-            st.subheader("Team Difficulty Comparison")
-            # Calculate average difficulty by team
-            team_difficulty = st.session_state.event_records.groupby('Team')['Actual_Difficulty'].mean().reset_index()
-            team_difficulty = team_difficulty.sort_values('Actual_Difficulty', ascending=False)
-            fig_team = px.bar(
-                team_difficulty,
-                x='Team',
-                y='Actual_Difficulty',
-                title='Average Difficulty Score by Team',
-                labels={'Actual_Difficulty': 'Average Difficulty Score'}
+        # Tab 1: Difficulty Trends
+        with viz_tabs[0]:
+            # 1. Difficulty score trends over 4 days
+            st.subheader("Difficulty Score Trends Over 4 Days")
+            difficulty_trends = st.session_state.event_records.groupby('Day')[['Initial_Difficulty', 'Actual_Difficulty']].mean().reset_index()
+            fig1 = px.line(
+                difficulty_trends,
+                x='Day',
+                y=['Initial_Difficulty', 'Actual_Difficulty'],
+                title='Difficulty Score Trends Over 4 Days',
+                labels={'value': 'Difficulty Score', 'variable': 'Type'},
+                markers=True
             )
-            st.plotly_chart(fig_team, use_container_width=True)
-        
-        # 3. Team reshuffling visualization (if teams have been reshuffled)
-        if st.session_state.reshuffled_teams is not None:
-            st.subheader("Team Composition Before and After Reshuffling")
-            # Get original team composition
-            original_team_counts = st.session_state.roster_data.groupby('Initial_Team').size().reset_index(name='Count')
-            original_team_counts['Phase'] = 'Before Reshuffling (Days 1-2)'
+            st.plotly_chart(fig1, use_container_width=True)
             
-            # Get new team composition
-            new_team_counts = st.session_state.reshuffled_teams.groupby('New_Team').size().reset_index(name='Count')
-            new_team_counts = new_team_counts.rename(columns={'New_Team': 'Initial_Team'})
-            new_team_counts['Phase'] = 'After Reshuffling (Days 3-4)'
-            
-            # Combine data
-            team_composition = pd.concat([original_team_counts, new_team_counts])
-            
-            # Plot
-            fig2 = px.bar(
-                team_composition,
-                x='Initial_Team',
-                y='Count',
-                color='Phase',
-                barmode='group',
-                title='Team Composition Before and After Reshuffling',
-                labels={'Initial_Team': 'Team', 'Count': 'Number of Participants'}
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-            
-            # 4. Difficulty score distributions by team
-            st.subheader("Difficulty Score Distribution by Team")
-            # For this visualization, we need to combine team information with event scores
-            # For Days 1-2, use original teams
-            if not st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])].empty:
-                days_1_2_events = st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])]
-                # Create a distribution plot for Days 1-2
-                if 'Team' in days_1_2_events.columns:
-                    fig3 = px.box(
-                        days_1_2_events,
-                        x='Team',
-                        y='Actual_Difficulty',
-                        title='Difficulty Score Distribution by Team for Days 1-2',
-                        labels={'Actual_Difficulty': 'Difficulty Score'}
-                    )
-                else:
-                    fig3 = px.box(
-                        days_1_2_events,
-                        x='Day',
-                        y='Actual_Difficulty',
-                        title='Difficulty Score Distribution for Days 1-2',
-                        labels={'Actual_Difficulty': 'Difficulty Score'}
-                    )
-                st.plotly_chart(fig3, use_container_width=True)
-            
-            # For Days 3-4, use reshuffled teams
-            if st.session_state.reshuffled_teams is not None and not st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])].empty:
-                days_3_4_events = st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])]
-                # Create a distribution plot for Days 3-4
-                if 'Team' in days_3_4_events.columns:
-                    fig4 = px.box(
-                        days_3_4_events,
-                        x='Team',
-                        y='Actual_Difficulty',
-                        title='Difficulty Score Distribution by Team for Days 3-4',
-                        labels={'Actual_Difficulty': 'Difficulty Score'}
-                    )
-                else:
-                    fig4 = px.box(
-                        days_3_4_events,
-                        x='Day',
-                        y='Actual_Difficulty',
-                        title='Difficulty Score Distribution for Days 3-4',
-                        labels={'Actual_Difficulty': 'Difficulty Score'}
-                    )
-                st.plotly_chart(fig4, use_container_width=True)
-        
-        # 5. Final difficulty scores grouped by day
-        st.subheader("Final Difficulty Scores by Day")
-        if not st.session_state.event_records.empty:
-            # Calculate average difficulty scores per day
+            # Day comparison bar chart
             day_avg_difficulty = st.session_state.event_records.groupby('Day')['Actual_Difficulty'].mean().reset_index()
-            
-            # Plot
             fig5 = px.bar(
                 day_avg_difficulty,
                 x='Day',
                 y='Actual_Difficulty',
-                title='Final Average Difficulty Scores by Day',
+                title='Average Difficulty by Day',
                 labels={'Actual_Difficulty': 'Average Difficulty Score'}
             )
             st.plotly_chart(fig5, use_container_width=True)
         
-        # 6. Drops analysis
-        if not st.session_state.drop_data.empty:
-            st.subheader("Participant Drops Analysis")
-            
-            # Drops by day and event
-            drops_by_day_event = st.session_state.drop_data.groupby(['Day', 'Event_Number']).size().reset_index(name='Number_of_Drops')
-            fig6 = px.bar(
-                drops_by_day_event,
-                x='Day',
-                y='Number_of_Drops',
-                color='Event_Number',
-                barmode='group',
-                title='Number of Drops by Day and Event',
-                labels={'Number_of_Drops': 'Number of Drops', 'Event_Number': 'Event Number'}
-            )
-            st.plotly_chart(fig6, use_container_width=True)
-            
-            # If team data is available, analyze drops by team
-            if 'Team' in st.session_state.drop_data.columns:
-                drops_by_team = st.session_state.drop_data.groupby('Team').size().reset_index(name='Number_of_Drops')
-                drops_by_team = drops_by_team.sort_values('Number_of_Drops', ascending=False)
-                fig7 = px.bar(
-                    drops_by_team,
+        # Tab 2: Team Performance
+        with viz_tabs[1]:
+            # Team difficulty comparison
+            if 'Team' in st.session_state.event_records.columns:
+                st.subheader("Team Performance")
+                team_difficulty = st.session_state.event_records.groupby('Team')['Actual_Difficulty'].mean().reset_index()
+                team_difficulty = team_difficulty.sort_values('Actual_Difficulty', ascending=False)
+                fig_team = px.bar(
+                    team_difficulty,
                     x='Team',
-                    y='Number_of_Drops',
-                    title='Number of Drops by Team',
-                    labels={'Number_of_Drops': 'Number of Drops'}
+                    y='Actual_Difficulty',
+                    title='Average Difficulty Score by Team',
+                    labels={'Actual_Difficulty': 'Average Difficulty Score'},
+                    color='Actual_Difficulty',
+                    color_continuous_scale='Viridis'
                 )
-                st.plotly_chart(fig7, use_container_width=True)
+                st.plotly_chart(fig_team, use_container_width=True)
+            
+            # Team reshuffling visualization (if teams have been reshuffled)
+            if st.session_state.reshuffled_teams is not None:
+                # Heat map of difficulty by team and day (more space-efficient than multiple charts)
+                if 'Team' in st.session_state.event_records.columns:
+                    st.subheader("Difficulty Heat Map by Team and Day")
+                    
+                    # Calculate average difficulty by team and day
+                    heatmap_data = st.session_state.event_records.groupby(['Team', 'Day'])['Actual_Difficulty'].mean().reset_index()
+                    
+                    # Pivot the data for the heat map
+                    heatmap_pivot = heatmap_data.pivot(index='Team', columns='Day', values='Actual_Difficulty')
+                    
+                    # Create heat map
+                    fig12 = px.imshow(
+                        heatmap_pivot,
+                        labels=dict(x="Day", y="Team", color="Difficulty"),
+                        x=heatmap_pivot.columns,
+                        y=heatmap_pivot.index,
+                        color_continuous_scale='Viridis',
+                        title='Difficulty Heat Map by Team and Day'
+                    )
+                    
+                    # Add text annotations with values
+                    for i in range(len(heatmap_pivot.index)):
+                        for j in range(len(heatmap_pivot.columns)):
+                            value = heatmap_pivot.iloc[i, j]
+                            if not pd.isna(value):  # Only add annotation if value is not NaN
+                                fig12.add_annotation(
+                                    x=heatmap_pivot.columns[j],
+                                    y=heatmap_pivot.index[i],
+                                    text=f"{value:.2f}",
+                                    showarrow=False,
+                                    font=dict(color="white" if value > 3 else "black")
+                                )
+                    
+                    st.plotly_chart(fig12, use_container_width=True)
+        
+        # Tab 3: Drops Analysis
+        with viz_tabs[2]:
+            if not st.session_state.drop_data.empty:
+                st.subheader("Participant Drops Analysis")
                 
-                # Drops by team and day
-                drops_by_team_day = st.session_state.drop_data.groupby(['Team', 'Day']).size().reset_index(name='Number_of_Drops')
-                fig8 = px.bar(
-                    drops_by_team_day,
-                    x='Team',
+                # Drops by day and event (combined chart)
+                drops_by_day = st.session_state.drop_data.groupby('Day').size().reset_index(name='Number_of_Drops')
+                
+                # Create the main drops chart
+                fig6 = px.bar(
+                    drops_by_day,
+                    x='Day',
                     y='Number_of_Drops',
-                    color='Day',
-                    barmode='group',
-                    title='Number of Drops by Team and Day',
+                    title='Number of Drops by Day',
                     labels={'Number_of_Drops': 'Number of Drops'}
                 )
-                st.plotly_chart(fig8, use_container_width=True)
-        
-        # 7. Event comparison across days
-        st.subheader("Event Comparison Across Days")
-        
-        # Get event names that appear in multiple days
-        event_days = st.session_state.event_records.groupby('Event_Name')['Day'].nunique()
-        repeating_events = event_days[event_days > 1].index.tolist()
-        
-        if repeating_events:
-            # Filter for these events
-            repeating_events_data = st.session_state.event_records[
-                st.session_state.event_records['Event_Name'].isin(repeating_events)
-            ]
-            
-            # Calculate average difficulty by event and day
-            event_day_difficulty = repeating_events_data.groupby(['Event_Name', 'Day'])['Actual_Difficulty'].mean().reset_index()
-            
-            # Plot
-            fig9 = px.line(
-                event_day_difficulty,
-                x='Day',
-                y='Actual_Difficulty',
-                color='Event_Name',
-                markers=True,
-                title='Event Difficulty Comparison Across Days',
-                labels={'Actual_Difficulty': 'Average Difficulty', 'Day': 'Day'}
-            )
-            st.plotly_chart(fig9, use_container_width=True)
-        else:
-            st.info("No events were repeated across multiple days.")
-        
-        # 8. Equipment weight vs difficulty correlation
-        st.subheader("Equipment Weight vs Difficulty Correlation")
-        
-        # Create a scatter plot
-        fig10 = px.scatter(
-            st.session_state.event_records,
-            x='Equipment_Weight',
-            y='Actual_Difficulty',
-            color='Day',
-            hover_data=['Event_Name', 'Team'],
-            title='Equipment Weight vs Difficulty',
-            labels={
-                'Equipment_Weight': 'Equipment Weight (lbs)',
-                'Actual_Difficulty': 'Actual Difficulty',
-                'Day': 'Day'
-            }
-        )
-        
-        # Add trendline
-        fig10.update_layout(
-            xaxis_title="Equipment Weight (lbs)",
-            yaxis_title="Actual Difficulty"
-        )
-        
-        # Add regression line
-        fig10.update_traces(marker=dict(size=10))
-        
-        st.plotly_chart(fig10, use_container_width=True)
-        
-        # 9. Distance vs difficulty correlation
-        st.subheader("Distance vs Difficulty Correlation")
-        
-        # Create a scatter plot
-        fig11 = px.scatter(
-            st.session_state.event_records,
-            x='Distance_km',
-            y='Actual_Difficulty',
-            color='Day',
-            hover_data=['Event_Name', 'Team'],
-            title='Distance vs Difficulty',
-            labels={
-                'Distance_km': 'Distance (km)',
-                'Actual_Difficulty': 'Actual Difficulty',
-                'Day': 'Day'
-            }
-        )
-        
-        # Add trendline
-        fig11.update_layout(
-            xaxis_title="Distance (km)",
-            yaxis_title="Actual Difficulty"
-        )
-        
-        # Add regression line
-        fig11.update_traces(marker=dict(size=10))
-        
-        st.plotly_chart(fig11, use_container_width=True)
-        
-        # 10. Heat map of difficulty by team and day
-        if 'Team' in st.session_state.event_records.columns:
-            st.subheader("Heat Map of Difficulty by Team and Day")
-            
-            # Calculate average difficulty by team and day
-            heatmap_data = st.session_state.event_records.groupby(['Team', 'Day'])['Actual_Difficulty'].mean().reset_index()
-            
-            # Pivot the data for the heat map
-            heatmap_pivot = heatmap_data.pivot(index='Team', columns='Day', values='Actual_Difficulty')
-            
-            # Create heat map
-            fig12 = px.imshow(
-                heatmap_pivot,
-                labels=dict(x="Day", y="Team", color="Difficulty"),
-                x=heatmap_pivot.columns,
-                y=heatmap_pivot.index,
-                color_continuous_scale='Viridis',
-                title='Difficulty Heat Map by Team and Day'
-            )
-            
-            # Customize layout
-            fig12.update_layout(
-                xaxis_title="Day",
-                yaxis_title="Team"
-            )
-            
-            # Add text annotations with values
-            for i in range(len(heatmap_pivot.index)):
-                for j in range(len(heatmap_pivot.columns)):
-                    value = heatmap_pivot.iloc[i, j]
-                    if not pd.isna(value):  # Only add annotation if value is not NaN
-                        fig12.add_annotation(
-                            x=heatmap_pivot.columns[j],
-                            y=heatmap_pivot.index[i],
-                            text=f"{value:.2f}",
-                            showarrow=False,
-                            font=dict(color="white" if value > 3 else "black")
+                st.plotly_chart(fig6, use_container_width=True)
+                
+                # Team drops chart (if team data available)
+                if 'Team' in st.session_state.drop_data.columns:
+                    # Create a dropdown to select visualization type
+                    drop_viz_type = st.selectbox(
+                        "Select Drops Analysis View", 
+                        ["Drops by Team", "Drops by Team and Day"]
+                    )
+                    
+                    if drop_viz_type == "Drops by Team":
+                        drops_by_team = st.session_state.drop_data.groupby('Team').size().reset_index(name='Number_of_Drops')
+                        drops_by_team = drops_by_team.sort_values('Number_of_Drops', ascending=False)
+                        
+                        fig7 = px.bar(
+                            drops_by_team,
+                            x='Team',
+                            y='Number_of_Drops',
+                            title='Number of Drops by Team',
+                            labels={'Number_of_Drops': 'Number of Drops'}
                         )
+                        st.plotly_chart(fig7, use_container_width=True)
+                    else:
+                        # Drops by team and day
+                        drops_by_team_day = st.session_state.drop_data.groupby(['Team', 'Day']).size().reset_index(name='Number_of_Drops')
+                        
+                        fig8 = px.bar(
+                            drops_by_team_day,
+                            x='Team',
+                            y='Number_of_Drops',
+                            color='Day',
+                            barmode='group',
+                            title='Number of Drops by Team and Day',
+                            labels={'Number_of_Drops': 'Number of Drops'}
+                        )
+                        st.plotly_chart(fig8, use_container_width=True)
+            else:
+                st.info("No drop data available for analysis.")
+        
+        # Tab 4: Correlations
+        with viz_tabs[3]:
+            st.subheader("Correlations with Difficulty")
             
-            st.plotly_chart(fig12, use_container_width=True)
+            # Add a selector for correlation type
+            correlation_type = st.radio(
+                "Select Correlation Analysis",
+                ["Equipment Weight vs Difficulty", "Distance vs Difficulty"],
+                horizontal=True
+            )
+            
+            if correlation_type == "Equipment Weight vs Difficulty":
+                # Equipment weight vs difficulty correlation
+                fig10 = px.scatter(
+                    st.session_state.event_records,
+                    x='Equipment_Weight',
+                    y='Actual_Difficulty',
+                    color='Day',
+                    hover_data=['Event_Name', 'Team'],
+                    title='Equipment Weight vs Difficulty',
+                    labels={
+                        'Equipment_Weight': 'Equipment Weight (lbs)',
+                        'Actual_Difficulty': 'Actual Difficulty',
+                        'Day': 'Day'
+                    },
+                    trendline="ols"  # Add regression line
+                )
+                
+                st.plotly_chart(fig10, use_container_width=True)
+            else:
+                # Distance vs difficulty correlation
+                fig11 = px.scatter(
+                    st.session_state.event_records,
+                    x='Distance_km',
+                    y='Actual_Difficulty',
+                    color='Day',
+                    hover_data=['Event_Name', 'Team'],
+                    title='Distance vs Difficulty',
+                    labels={
+                        'Distance_km': 'Distance (km)',
+                        'Actual_Difficulty': 'Actual Difficulty',
+                        'Day': 'Day'
+                    },
+                    trendline="ols"  # Add regression line
+                )
+                
+                st.plotly_chart(fig11, use_container_width=True)
         
-        # 11. Download all visualization data
-        st.subheader("Download Visualization Data")
-        
-        # Prepare data for download
-        viz_data = {
-            'difficulty_trends': difficulty_trends,
-            'day_avg_difficulty': day_avg_difficulty
-        }
-        
-        if 'Team' in st.session_state.event_records.columns:
-            viz_data['team_difficulty'] = team_difficulty
-        
-        if not st.session_state.drop_data.empty:
-            viz_data['drops_by_day_event'] = drops_by_day_event
-            if 'Team' in st.session_state.drop_data.columns:
-                viz_data['drops_by_team'] = drops_by_team
-                viz_data['drops_by_team_day'] = drops_by_team_day
-        
-        if repeating_events:
-            viz_data['event_day_difficulty'] = event_day_difficulty
-        
-        # Create a zip file with all visualization data
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, 'w') as zip_file:
-            for name, df in viz_data.items():
-                zip_file.writestr(f"{name}.csv", df.to_csv(index=False))
-        
-        buffer.seek(0)
-        b64 = base64.b64encode(buffer.read()).decode()
-        href = f'<a href="data:application/zip;base64,{b64}" download="visualization_data.zip">Download All Visualization Data</a>'
-        st.markdown(href, unsafe_allow_html=True)
+        # Download data button at the bottom of all tabs
+        st.write("---")
+        if st.button("Download All Visualization Data"):
+            # Prepare data for download
+            viz_data = {
+                'difficulty_trends': difficulty_trends,
+                'day_avg_difficulty': day_avg_difficulty
+            }
+            
+            if 'Team' in st.session_state.event_records.columns:
+                viz_data['team_difficulty'] = team_difficulty
+            
+            if not st.session_state.drop_data.empty:
+                viz_data['drops_by_day'] = drops_by_day
+                if 'Team' in st.session_state.drop_data.columns:
+                    viz_data['drops_by_team'] = drops_by_team
+                    viz_data['drops_by_team_day'] = drops_by_team_day
+            
+            # Create a zip file with all visualization data
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w') as zip_file:
+                for name, df in viz_data.items():
+                    zip_file.writestr(f"{name}.csv", df.to_csv(index=False))
+            
+            buffer.seek(0)
+            b64 = base64.b64encode(buffer.read()).decode()
+            href = f'<a href="data:application/zip;base64,{b64}" download="visualization_data.zip">Download All Visualization Data</a>'
+            st.markdown(href, unsafe_allow_html=True)
     else:
         st.warning("No event data available for visualization. Please record events first.")
 
