@@ -1052,55 +1052,24 @@ with tabs[2]:
                                                             
                                                             # For each subsequent event, update the initial participants count
                                                             for idx, event_record in subsequent_events.iterrows():
+                                                                # Calculate the updated initial participants for this subsequent event
                                                                 event_day = event_record['Day']
                                                                 event_num = event_record['Event_Number']
                                                                 
-                                                                # Find the previous event for this event
-                                                                prev_event = None
-                                                                if event_num > 1:
-                                                                    # Same day, previous event number
-                                                                    prev_day = event_day
-                                                                    prev_num = event_num - 1
-                                                                else:
-                                                                    # Previous day, last event
-                                                                    prev_day = event_day - 1
-                                                                    # Find the highest event number for the previous day
-                                                                    prev_day_events = st.session_state.event_records[
-                                                                        (st.session_state.event_records['Team'] == team_name) &
-                                                                        (st.session_state.event_records['Day'] == prev_day)
-                                                                    ]
-                                                                    if not prev_day_events.empty:
-                                                                        prev_num = prev_day_events['Event_Number'].max()
-                                                                    else:
-                                                                        prev_num = 3  # Default
-                                                            
-                                                                # Try to find the previous event record
-                                                                prev_event_record = st.session_state.event_records[
-                                                                    (st.session_state.event_records['Team'] == team_name) &
-                                                                    (st.session_state.event_records['Day'] == prev_day) &
-                                                                    (st.session_state.event_records['Event_Number'] == prev_num)
-                                                                ]
+                                                                # Get drops from events before this one
+                                                                prev_drops_to_event = st.session_state.drop_data[
+                                                                    (st.session_state.drop_data['Team'] == team_name) &
+                                                                    (
+                                                                        # Earlier day
+                                                                        (st.session_state.drop_data['Day'] < event_day) |
+                                                                        # Same day but earlier event
+                                                                        ((st.session_state.drop_data['Day'] == event_day) & 
+                                                                         (st.session_state.drop_data['Event_Number'] < event_num))
+                                                                    )
+                                                                ]['Roster_Number'].unique()
                                                                 
-                                                                # Calculate new initial participants
-                                                                if not prev_event_record.empty:
-                                                                    # Use the ending count from previous event
-                                                                    prev_initial = prev_event_record.iloc[0]['Initial_Participants']
-                                                                    prev_drops = prev_event_record.iloc[0]['Drops']
-                                                                    updated_initial_participants = prev_initial - prev_drops
-                                                                else:
-                                                                    # No previous event record, calculate from drops data
-                                                                    prev_drops_to_event = st.session_state.drop_data[
-                                                                        (st.session_state.drop_data['Team'] == team_name) &
-                                                                        (
-                                                                            # Earlier day
-                                                                            (st.session_state.drop_data['Day'] < event_day) |
-                                                                            # Same day but earlier event
-                                                                            ((st.session_state.drop_data['Day'] == event_day) & 
-                                                                             (st.session_state.drop_data['Event_Number'] < event_num))
-                                                                        )
-                                                                    ]['Roster_Number'].unique()
-                                                                    
-                                                                    updated_initial_participants = team_size - len(prev_drops_to_event)
+                                                                # Calculate new initial participants count
+                                                                updated_initial_participants = team_size - len(prev_drops_to_event)
                                                                 
                                                                 # Update the event record
                                                                 st.session_state.event_records.loc[idx, 'Initial_Participants'] = updated_initial_participants
@@ -1514,67 +1483,79 @@ with tabs[2]:
                                     # Calculate initial participants based on the ending count from the previous event
                                     default_participants = team_size  # Default to full team size for the first event
                                     
-                                    # Get previous event (if any)
-                                    previous_event = None
+                                    # Find the previous event for this event
+                                    previous_event_record = None
                                     if event_number > 1:
                                         # Same day, previous event number
-                                        previous_event_num = event_number - 1
-                                        previous_day = day
-                                        previous_event_exists = True
+                                        prev_day = day
+                                        prev_num = event_number - 1
+                                        
+                                        # Look for previous event record
+                                        if not st.session_state.event_records.empty:
+                                            previous_event_record = st.session_state.event_records[
+                                                (st.session_state.event_records['Team'] == team_name) &
+                                                (st.session_state.event_records['Day'] == prev_day) &
+                                                (st.session_state.event_records['Event_Number'] == prev_num)
+                                            ]
+                                            if not previous_event_record.empty:
+                                                previous_event_record = previous_event_record.iloc[0]
                                     elif day > day_range[0]:
-                                        # Previous day, last event of that day
-                                        previous_day = day - 1
+                                        # Previous day, last event
+                                        prev_day = day - 1
+                                        
                                         # Find the highest event number for the previous day
                                         if not st.session_state.event_records.empty:
                                             prev_day_events = st.session_state.event_records[
                                                 (st.session_state.event_records['Team'] == team_name) &
-                                                (st.session_state.event_records['Day'] == previous_day)
+                                                (st.session_state.event_records['Day'] == prev_day)
                                             ]
                                             if not prev_day_events.empty:
-                                                previous_event_num = prev_day_events['Event_Number'].max()
-                                                previous_event_exists = True
-                                            else:
-                                                previous_event_exists = False
-                                        else:
-                                            # No event records, use event number 3 as default for previous day
-                                            previous_event_num = 3
-                                            previous_event_exists = True
-                                    
-                                    # If there's a previous event, check if it has a record
-                                    if previous_event_exists and not st.session_state.event_records.empty:
-                                        previous_event_record = st.session_state.event_records[
-                                            (st.session_state.event_records['Team'] == team_name) &
-                                            (st.session_state.event_records['Day'] == previous_day) &
-                                            (st.session_state.event_records['Event_Number'] == previous_event_num)
-                                        ]
-                                        
-                                        if not previous_event_record.empty:
-                                            # Calculate ending participants from previous event
-                                            prev_initial = previous_event_record.iloc[0]['Initial_Participants']
-                                            prev_drops = previous_event_record.iloc[0]['Drops']
-                                            default_participants = prev_initial - prev_drops
-                                        else:
-                                            # No record for previous event, calculate from drops data
-                                            previous_drops = []
-                                            if not st.session_state.drop_data.empty:
-                                                prev_drops_query = (
-                                                    (st.session_state.drop_data['Team'] == team_name) &
-                                                    (
-                                                        # Earlier day
-                                                        (st.session_state.drop_data['Day'] < day) |
-                                                        # Same day but earlier event
-                                                        ((st.session_state.drop_data['Day'] == day) & 
-                                                         (st.session_state.drop_data['Event_Number'] < event_number))
-                                                    )
-                                                )
-                                                previous_drops = st.session_state.drop_data[prev_drops_query]['Roster_Number'].unique().tolist()
+                                                prev_num = prev_day_events['Event_Number'].max()
                                                 
-                                                # Calculate initial participants excluding previous drops
-                                                default_participants = team_size - len(previous_drops)
+                                                # Look for that event record
+                                                previous_event_record = st.session_state.event_records[
+                                                    (st.session_state.event_records['Team'] == team_name) &
+                                                    (st.session_state.event_records['Day'] == prev_day) &
+                                                    (st.session_state.event_records['Event_Number'] == prev_num)
+                                                ]
+                                                if not previous_event_record.empty:
+                                                    previous_event_record = previous_event_record.iloc[0]
                                     
-                                    # Use the existing record value if available (to preserve user edits)
+                                    # Calculate default participants based on previous event
+                                    if previous_event_record is not None:
+                                        # Use ending participants from previous event
+                                        prev_initial = previous_event_record['Initial_Participants']
+                                        prev_drops = previous_event_record['Drops']
+                                        default_participants = prev_initial - prev_drops
+                                        
+                                        st.info(f"Initial participants set to {default_participants} based on ending count from previous event")
+                                    else:
+                                        # No previous event record, calculate from drops data
+                                        previous_drops = []
+                                        if not st.session_state.drop_data.empty:
+                                            prev_drops_query = (
+                                                (st.session_state.drop_data['Team'] == team_name) &
+                                                (
+                                                    # Earlier day
+                                                    (st.session_state.drop_data['Day'] < day) |
+                                                    # Same day but earlier event
+                                                    ((st.session_state.drop_data['Day'] == day) & 
+                                                     (st.session_state.drop_data['Event_Number'] < event_number))
+                                                )
+                                            )
+                                            previous_drops = st.session_state.drop_data[prev_drops_query]['Roster_Number'].unique().tolist()
+                                            
+                                            # Calculate initial participants excluding previous drops
+                                            default_participants = team_size - len(previous_drops)
+                                            
+                                            if len(previous_drops) > 0:
+                                                st.info(f"Initial participants set to {default_participants} based on {len(previous_drops)} drops from previous events")
+                                    
+                                    # If we have an existing record, use that value (to preserve user edits)
                                     if not existing_record.empty:
-                                        default_participants = existing_record.iloc[0]['Initial_Participants']
+                                        existing_participants = existing_record.iloc[0]['Initial_Participants']
+                                        if existing_participants != default_participants:
+                                            st.warning(f"Note: This event was previously recorded with {existing_participants} initial participants.")
                                     
                                     # Display the initial participants field
                                     initial_participants = st.number_input(
@@ -1584,11 +1565,11 @@ with tabs[2]:
                                         key=f"participants_{team_name}_{day}_{event_name}"
                                     )
                                     
-                                    # Also display a note about where this value comes from
-                                    if not existing_record.empty:
-                                        st.info("Initial participants value is from the saved event record.")
-                                    elif 'adjusted_participants' in st.session_state and participants_key in st.session_state.adjusted_participants:
-                                        st.info("Initial participants value is adjusted based on previous drops.")
+                                    # Add this right before the initial_participants input field
+                                    if previous_event_record is not None:
+                                        st.info(f"Initial participants calculated from previous event: {prev_initial} participants - {prev_drops} drops = {default_participants} participants")
+                                    elif len(previous_drops) > 0:
+                                        st.info(f"Initial participants calculated from drops data: {team_size} - {len(previous_drops)} drops = {default_participants} participants")
                                     
                                     # Get current drop count from drop data
                                     drops = 0
