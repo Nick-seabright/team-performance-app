@@ -1583,12 +1583,6 @@ with tabs[2]:
                                         key=field_key
                                     )
                                     
-                                    # Add this right before the initial_participants input field
-                                    if previous_event_record is not None:
-                                        st.info(f"Initial participants calculated from previous event: {prev_initial} participants - {prev_drops} drops = {default_participants} participants")
-                                    elif len(previous_drops) > 0:
-                                        st.info(f"Initial participants calculated from drops data: {team_size} - {len(previous_drops)} drops = {default_participants} participants")
-                                    
                                     # Get current drop count from drop data
                                     drops = 0
                                     if not st.session_state.drop_data.empty:
