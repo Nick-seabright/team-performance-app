@@ -1483,9 +1483,6 @@ with tabs[2]:
                                     # Calculate initial participants based on the ending count from the previous event
                                     default_participants = team_size  # Default to full team size for the first event
                                     
-                                    # For debugging
-                                    st.write(f"Debug - Team: {team_name}, Day: {day}, Event: {event_number}")
-                                    
                                     # Determine the previous event (regardless of whether we have a record for it)
                                     prev_day = day
                                     prev_event_num = event_number - 1
@@ -1495,7 +1492,6 @@ with tabs[2]:
                                         prev_day = day - 1
                                         # Assume 3 events per day as default
                                         prev_event_num = 3
-                                        
                                         # Try to find the actual last event number for the previous day
                                         if not st.session_state.event_records.empty:
                                             prev_day_events = st.session_state.event_records[
@@ -1504,9 +1500,6 @@ with tabs[2]:
                                             ]
                                             if not prev_day_events.empty:
                                                 prev_event_num = int(prev_day_events['Event_Number'].max())
-                                    
-                                    # Debug the previous event we're looking for
-                                    st.write(f"Debug - Looking for previous event: Day {prev_day}, Event {prev_event_num}")
                                     
                                     # Now try to find a record for this previous event
                                     previous_event_record = None
@@ -1518,9 +1511,6 @@ with tabs[2]:
                                         ]
                                         if not prev_event_records.empty:
                                             previous_event_record = prev_event_records.iloc[0]
-                                            st.write(f"Debug - Found previous event record")
-                                        else:
-                                            st.write(f"Debug - No record found for previous event")
                                     
                                     # Calculate default participants based on previous event
                                     if previous_event_record is not None:
@@ -1530,15 +1520,14 @@ with tabs[2]:
                                             prev_drops = int(previous_event_record['Drops'])
                                             default_participants = prev_initial - prev_drops
                                             
-                                            st.write(f"Debug - Previous event: Initial {prev_initial}, Drops {prev_drops}")
-                                            st.info(f"Initial participants set to {default_participants} based on ending count from previous event")
+                                            # Display info about calculation
+                                            st.info(f"Initial participants calculated from previous event: {prev_initial} participants - {prev_drops} drops = {default_participants} participants")
                                         except Exception as e:
                                             st.error(f"Error calculating from previous event: {str(e)}")
                                             # Fall back to default
                                             default_participants = team_size
                                     else:
                                         # No previous event record, calculate from drops data
-                                        st.write(f"Debug - No previous event record, using drops data")
                                         previous_drops = []
                                         if not st.session_state.drop_data.empty:
                                             prev_drops_query = (
@@ -1557,18 +1546,18 @@ with tabs[2]:
                                             # Calculate initial participants excluding previous drops
                                             default_participants = team_size - len(previous_drops)
                                             
-                                            st.write(f"Debug - Found {len(previous_drops)} previous drops")
                                             if len(previous_drops) > 0:
                                                 st.info(f"Initial participants set to {default_participants} based on {len(previous_drops)} drops from previous events")
                                     
-                                    # If we have an existing record, use that value (to preserve user edits)
+                                    # If we have an existing record, use that value only if it was manually edited
                                     if not existing_record.empty:
                                         try:
                                             existing_participants = int(existing_record.iloc[0]['Initial_Participants'])
-                                            st.write(f"Debug - Existing record has {existing_participants} participants")
                                             if existing_participants != default_participants:
-                                                st.warning(f"Note: This event was previously recorded with {existing_participants} initial participants.")
-                                                default_participants = existing_participants
+                                                # Only use existing value if it was manually edited
+                                                if existing_participants != team_size and existing_participants != (team_size - len(previous_drops if 'previous_drops' in locals() else [])):
+                                                    st.warning(f"Note: This event was previously recorded with {existing_participants} initial participants.")
+                                                    default_participants = existing_participants
                                         except Exception as e:
                                             st.error(f"Error retrieving existing participants: {str(e)}")
                                     
@@ -1579,12 +1568,19 @@ with tabs[2]:
                                         default_participants = team_size
                                         st.error(f"Error converting participants to integer. Using team size: {team_size}")
                                     
+                                    # Create a unique key for this field
+                                    field_key = f"participants_{team_name}_{day}_{event_number}_{event_name}"
+                                    
+                                    # Force update the session state for this input field to ensure it shows the correct value
+                                    if field_key not in st.session_state or st.session_state[field_key] != default_participants:
+                                        st.session_state[field_key] = default_participants
+                                    
                                     # Display the initial participants field
                                     initial_participants = st.number_input(
                                         "Initial Participants",
-                                        value=default_participants,
+                                        value=st.session_state[field_key],  # Use the value from session state
                                         min_value=0,
-                                        key=f"participants_{team_name}_{day}_{event_name}"
+                                        key=field_key
                                     )
                                     
                                     # Add this right before the initial_participants input field
