@@ -939,19 +939,29 @@ with tabs[2]:
                                                 active_participants['Candidate_Name'] == drop_participant
                                             ]['Roster_Number'].values[0]
                                             
-                                            # Get current time for drop time if no time specified
-                                            current_time = datetime.now().strftime("%H:%M")
-                                            
-                                            # Default to event start time if available
-                                            start_time_val = ""
-                                            if not existing_record.empty:
-                                                start_time_val = existing_record.iloc[0]['Start_Time']
-                                            
-                                            # Enter drop time
+                                            # Create a unique session state key for this drop time
+                                            drop_time_key = f"drop_time_{team_name}_{day}_{event_number}"
+                        
+                                            # Initialize session state for this drop time if it doesn't exist
+                                            if drop_time_key not in st.session_state:
+                                                # Default to event start time if available, otherwise empty
+                                                start_time_val = ""
+                                                if not existing_record.empty:
+                                                    start_time_val = existing_record.iloc[0]['Start_Time']
+                                                
+                                                st.session_state[drop_time_key] = start_time_val
+                        
+                                            # Create a callback to update the session state when the input changes
+                                            def update_drop_time():
+                                                # This will be called when the input changes
+                                                pass  # The session state is automatically updated by Streamlit
+                        
+                                            # Enter drop time using session state to persist the value
                                             drop_time = st.text_input(
-                                                "Drop Time (HH:MM)", 
-                                                value=start_time_val if start_time_val else current_time,
-                                                placeholder="e.g., 09:15"
+                                                "Drop Time (HH:MM)",
+                                                key=drop_time_key,  # This key connects to the session state
+                                                placeholder="e.g., 09:15",
+                                                on_change=update_drop_time
                                             )
                                             
                                             # Submit button
@@ -3088,20 +3098,29 @@ with tabs[5]:
                                                 active_participants['Candidate_Name'] == drop_participant
                                             ]['Roster_Number'].values[0]
                                             
-                                            # Get current time for drop time if no time specified
-                                            current_time = datetime.now().strftime("%H:%M")
-                                            
-                                            # Default to event start time if available
-                                            start_time_val = ""
-                                            if not existing_record.empty:
-                                                start_time_val = existing_record.iloc[0]['Start_Time']
-                                            
-                                            # Enter drop time
+                                            # Create a unique session state key for this drop time
+                                            drop_time_key = f"drop_time_days3-4_{team_name}_{day}_{event_number}"
+                        
+                                            # Initialize session state for this drop time if it doesn't exist
+                                            if drop_time_key not in st.session_state:
+                                                # Default to event start time if available, otherwise empty
+                                                start_time_val = ""
+                                                if not existing_record.empty:
+                                                    start_time_val = existing_record.iloc[0]['Start_Time']
+                                                
+                                                st.session_state[drop_time_key] = start_time_val
+                        
+                                            # Create a callback to update the session state when the input changes
+                                            def update_drop_time():
+                                                # This will be called when the input changes
+                                                pass  # The session state is automatically updated by Streamlit
+                        
+                                            # Enter drop time using session state to persist the value
                                             drop_time = st.text_input(
                                                 "Drop Time (HH:MM)",
-                                                value=start_time_val if start_time_val else current_time,
+                                                key=drop_time_key,  # This key connects to the session state
                                                 placeholder="e.g., 09:15",
-                                                key=f"drop_time_days3-4_{day}_{event_number}"
+                                                on_change=update_drop_time
                                             )
                                             
                                             # Submit button
