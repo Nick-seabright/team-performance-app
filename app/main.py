@@ -886,6 +886,15 @@ with tabs[2]:
                                                         # Update the corresponding event record if it exists
                                                         if not st.session_state.event_records.empty:
                                                             event_record = st.session_state.event_records[
+                                                                (st.session_state.event_records['Team'] == team_name) &
+                                                                (st.session_state.event_records['Day'] == day) &
+                                                                (st.session_state.event_records['Event_Number'] == event_number) &
+                                                                (st.session_state.event_records['Event_Name'] == event_name)
+                                                            ]
+                                                            
+                                                            if not event_record.empty:
+                                                                # Get the current drops count
+                                                                drops_query = (
                                                                     (st.session_state.drop_data['Team'] == team_name) &
                                                                     (st.session_state.drop_data['Day'] == day) &
                                                                     (st.session_state.drop_data['Event_Number'] == event_number) &

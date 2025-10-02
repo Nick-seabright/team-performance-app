@@ -87,13 +87,22 @@ def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participa
             return difficulty
         
         # For each drop, calculate the effective participants
-        if start_time is None:
-            # If no start time provided, approximate using drop times relative to duration
-            drop_times_relative = [0.5 * time_actual_min] * len(event_drops)  # Assume drops at midpoint
-            
-            # Calculate weighted average of participants
-            segments = [0] + drop_times_relative + [time_actual_min]
-            participant_counts = list(range(initial_participants, initial_participants - len(drop_times_relative) - 1, -1))
+        # Drop times are now directly in MMM:SS format relative to event start
+        drop_times_relative = []
+        for drop_time in event_drops['Drop_Time']:
+            try:
+                # Convert drop time string to minutes
+                minutes_from_start = time_str_to_minutes(drop_time)
+                drop_times_relative.append(minutes_from_start)
+            except:
+                # If there's an error parsing the drop time, assume midpoint
+                drop_times_relative.append(0.5 * time_actual_min)
+        
+        # Sort drop times
+        drop_times_relative.sort()
+        # Calculate weighted average of participants
+        segments = [0] + drop_times_relative + [time_actual_min]
+        participant_counts = list(range(initial_participants, initial_participants - len(drop_times_relative) - 1, -1))
             
         else:
             # If start time provided, calculate minutes from start for each drop

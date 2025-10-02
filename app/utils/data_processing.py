@@ -332,10 +332,8 @@ def time_str_to_minutes(time_str):
         parts = time_str.split(':')
         if len(parts) != 2:
             raise ValueError("Time must be in format 'mm:ss'")
-        
         minutes = int(parts[0])
         seconds = int(parts[1])
-        
         return minutes + seconds / 60
     except Exception as e:
         st.error(f"Error converting time: {str(e)}")
