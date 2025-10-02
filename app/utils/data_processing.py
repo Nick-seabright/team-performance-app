@@ -132,32 +132,28 @@ def load_events_data(file=None):
     try:
         # Get the combined event equipment data
         event_equip_data = load_event_equip_data(file)
-        
         if event_equip_data is None:
             return None
-        
         # Group by EventID and EventName to get unique events
         events = event_equip_data.groupby(['EventID', 'EventName']).first().reset_index()
-        
         # Create a combined events DataFrame
         combined_events = []
-        
         # Process each unique event
         for _, event in events.iterrows():
             event_id = event['EventID']
             event_name = event['EventName']
-            
             # Get all equipment for this event
             event_equipment = event_equip_data[event_equip_data['EventID'] == event_id]
             
-            # Calculate total weight using AppRatioWT instead of raw weights
-            total_weight = event_equipment['AppRatioWT'].sum()
+            # Calculate total weight using the formula: (EquipNum * EquipWt) / AppRatio
+            # This ensures the weight adjusts properly when EquipNum changes
+            event_equipment['Adjusted_Weight'] = (event_equipment['EquipNum'] * event_equipment['EquipWt']) / event_equipment['AppRatio']
+            total_weight = event_equipment['Adjusted_Weight'].sum()
             total_count = event_equipment['EquipNum'].sum()
             
             # Get distance and time
             distance_km = event_equipment['Distance_KM'].iloc[0]
             time_std = event_equipment['Time_STD'].iloc[0]  # Time limit in minutes
-            
             # Convert time limit from minutes to mm:ss format
             total_minutes = int(time_std)
             seconds = int((time_std - total_minutes) * 60)
@@ -180,23 +176,20 @@ def load_events_data(file=None):
                 'Event_Number': event_number,
                 'Event_Name': event_name,
                 'Equipment_Name': 'MIXED EQUIPMENT' if len(event_equipment) > 1 else event_equipment.iloc[0]['EquipmentName'],
-                'Equipment_Weight': total_weight,  # Using AppRatioWT sum
+                'Equipment_Weight': total_weight,  # Using the new Adjusted_Weight sum
                 'Number_of_Equipment': total_count,
                 'Time_Limit': time_limit,  # Format: mm:ss
                 'Initial_Participants': 18,  # Default team size
                 'Distance': distance_km
             }
-            
             combined_events.append(combined_event)
         
         # Create DataFrame from the combined events
         combined_df = pd.DataFrame(combined_events)
-        
         # Save the combined data for future use
         script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         combined_path = os.path.join(script_dir, 'data', 'events_combined.csv')
         combined_df.to_csv(combined_path, index=False)
-        
         return combined_df
     except Exception as e:
         st.error(f"Error creating events data: {str(e)}")

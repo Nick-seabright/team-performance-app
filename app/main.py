@@ -1416,18 +1416,16 @@ with tabs[2]:
                                                                 break
                                                 except:
                                                     pass
-                                            
                                             new_qty = st.number_input(
                                                 f"Qty",
                                                 value=default_qty,
                                                 min_value=0,
                                                 key=f"qty_{team_name}_{day}_{event_name}_{event_number}_{i}"
                                             )
-                                            
                                             if new_qty != equip['EquipNum']:
                                                 equipment_list.at[equip_idx, 'EquipNum'] = new_qty
                                                 app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
-                                                equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
+                                                equipment_list.at[equip_idx, 'AppRatioWT'] = (equip['EquipWt'] * new_qty) / app_ratio
                                         
                                         # Calculate total for this item
                                         item_total = equipment_list.at[equip_idx, 'AppRatioWT']
@@ -1648,7 +1646,7 @@ with tabs[2]:
                                                         'Weight': equip['EquipWt'],
                                                         'Quantity': equip['EquipNum'],
                                                         'AppRatio': equip['AppRatio'] if 'AppRatio' in equip else 1,
-                                                        'TotalWeight': equip['AppRatioWT'] if 'AppRatioWT' in equip else (equip['EquipWt'] * equip['EquipNum'])
+                                                        'TotalWeight': (equip['EquipWt'] * equip['EquipNum']) / (equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1)
                                                     })
                                             else:
                                                 # Fallback to simple calculation
@@ -2711,7 +2709,8 @@ with tabs[5]:
                                             if new_qty != equip['EquipNum']:
                                                 equipment_list.at[equip_idx, 'EquipNum'] = new_qty
                                                 app_ratio = equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1
-                                                equipment_list.at[equip_idx, 'AppRatioWT'] = equip['EquipWt'] * new_qty * (app_ratio / 100 if app_ratio > 10 else app_ratio)
+                                                equipment_list.at[equip_idx, 'AppRatioWT'] = (equip['EquipWt'] * new_qty) / app_ratio
+                                                
                                         # Calculate total for this item
                                         item_total = equipment_list.at[equip_idx, 'AppRatioWT']
                                         total_weight += item_total
@@ -2926,7 +2925,7 @@ with tabs[5]:
                                                         'Weight': equip['EquipWt'],
                                                         'Quantity': equip['EquipNum'],
                                                         'AppRatio': equip['AppRatio'] if 'AppRatio' in equip else 1,
-                                                        'TotalWeight': equip['AppRatioWT'] if 'AppRatioWT' in equip else (equip['EquipWt'] * equip['EquipNum'])
+                                                        'TotalWeight': (equip['EquipWt'] * equip['EquipNum']) / (equip['AppRatio'] if 'AppRatio' in equip and equip['AppRatio'] > 0 else 1)
                                                     })
                                             else:
                                                 # Fallback to simple calculation
