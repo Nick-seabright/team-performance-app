@@ -2554,7 +2554,6 @@ with tabs[5]:
                                         index=default_heat-1,
                                         key=f"heat_days3-4_{team_name}_{day}_{event_name}"
                                     )
-                                    
                                     # Duration input with default from existing record
                                     default_duration = ""
                                     if not existing_record.empty:
@@ -2565,7 +2564,6 @@ with tabs[5]:
                                         placeholder="e.g., 120:45",
                                         key=f"duration_days3-4_{team_name}_{day}_{event_name}"
                                     )
-                                    
                                     # Initial participants with default based on the freshly calculated value
                                     # Calculate initial participants based on the ending count from the previous event
                                     default_participants = team_size  # Default to full team size for the first event
@@ -2668,7 +2666,6 @@ with tabs[5]:
                                         )
                                         drops = len(st.session_state.drop_data[drops_query])
                                     st.write(f"**Drops (automatically calculated):** {drops}")
-                                    
                                     # Preview time duration if provided
                                     if event_duration:
                                         try:
@@ -2676,7 +2673,6 @@ with tabs[5]:
                                             st.write(f"**Duration in minutes:** {time_actual_min:.2f}")
                                         except:
                                             st.warning("Please enter a valid duration in MMM:SS format")
-
                                 # Submit button for this event
                                 submit_button = st.form_submit_button(f"Save Event Data")
                                 if submit_button:
@@ -2687,17 +2683,14 @@ with tabs[5]:
                                             # Get time directly from input
                                             time_actual = event_duration
                                             time_actual_min = time_str_to_minutes(time_actual)
-                                            
                                             # Convert time limit to minutes for calculations
                                             time_limit_min = time_str_to_minutes(time_limit)
-                                            
                                             # Calculate temperature multiplier based on heat category
                                             temp_multiplier = 1.0
                                             if heat_category == 4:
                                                 temp_multiplier = 1.15
                                             elif heat_category == 5:
                                                 temp_multiplier = 1.3
-                                                
                                             # Use the modified equipment data
                                             equipment_key = f"equipment_days3-4_{day}_{event_name}_{event_number}"
                                             if equipment_key in st.session_state:
@@ -2707,11 +2700,9 @@ with tabs[5]:
                                                 else:
                                                     # Fallback calculation
                                                     total_weight = sum(equipment_data['EquipWt'] * equipment_data['EquipNum'])
-                                                
                                                 # Apply weight adjustment if available
                                                 if adjusted_weight is not None:
                                                     total_weight = adjusted_weight
-                                                
                                                 # Store individual equipment details for reference
                                                 equipment_details = []
                                                 for _, equip in equipment_data.iterrows():
@@ -2733,13 +2724,11 @@ with tabs[5]:
                                                     'Quantity': event_details.get('Number_of_Equipment', 1),
                                                     'TotalWeight': total_weight
                                                 }]
-                                                
                                             # Calculate difficulty scores
                                             initial_difficulty = calculate_initial_difficulty(
                                                 temp_multiplier, total_weight, initial_participants,
                                                 distance_km, time_limit_min
                                             )
-                                            
                                             # Get current drop count from drop data
                                             drops = 0
                                             team_drop_data = pd.DataFrame()
@@ -2752,14 +2741,12 @@ with tabs[5]:
                                                 )
                                                 team_drop_data = st.session_state.drop_data[drops_query]
                                                 drops = len(team_drop_data)
-                                                
                                             actual_difficulty = calculate_actual_difficulty(
                                                 temp_multiplier, total_weight, initial_participants,
                                                 distance_km, time_actual_min, drops,
                                                 team_drop_data, day, event_number, event_name,
                                                 "00:00"  # Start time is always 0 in the new format
                                             )
-                                            
                                             # Create new record
                                             new_record = {
                                                 'Team': team_name,
@@ -2783,7 +2770,6 @@ with tabs[5]:
                                                 'Temperature_Multiplier': temp_multiplier,
                                                 'Equipment_Details': str(equipment_details)  # Store as string for DataFrame
                                             }
-                                            
                                             # Check if we already have an entry for this team, day, event number, and event name
                                             if not existing_record.empty:
                                                 # Update the existing record
@@ -2796,7 +2782,6 @@ with tabs[5]:
                                                     pd.DataFrame([new_record])
                                                 ], ignore_index=True)
                                                 st.success(f"Event data recorded for {event_name}")
-                                                
                                             # Automatically save the session after recording data
                                             save_session_state()
                                             # Rerun to refresh the UI
@@ -3215,12 +3200,10 @@ with tabs[5]:
                             except Exception as e:
                                 st.error(f"Error in drop management: {str(e)}")
                                 st.info("Please try refreshing the page if you encounter issues with drop management.")
-
                 # Record drops between events
                 st.write("---")
                 st.write("### Record Drops Between Events")
                 st.info("Use this section to record participants who dropped between events (not during an event).")
-
                 # Get the list of participants who haven't already dropped
                 available_participants = team_roster.copy()
                 if not st.session_state.drop_data.empty:
@@ -3235,7 +3218,6 @@ with tabs[5]:
                         available_participants = available_participants[
                             ~available_participants['Roster_Number'].isin(dropped_roster_numbers)
                         ]
-
                 # Create a form to record between-event drops
                 with st.form(f"between_event_drop_form_days3-4_{day}"):
                     # Only show the form if there are available participants
@@ -3250,17 +3232,14 @@ with tabs[5]:
                         between_event_roster_number = available_participants[
                             available_participants['Candidate_Name'] == between_event_participant
                         ]['Roster_Number'].values[0]
-                        
                         # Select which event they dropped after
                         event_options = [f"Event {i}: {name}" for i, name in enumerate(day_events, 1)]
                         event_options.insert(0, "Before first event")  # Add option for before any events
-                        
                         after_event = st.selectbox(
                             "When did the participant drop?",
                             options=event_options,
                             key=f"after_event_days3-4_{day}"
                         )
-                        
                         # Determine event number and name
                         if after_event == "Before first event":
                             event_number = 0
@@ -3269,10 +3248,8 @@ with tabs[5]:
                             # Extract event number and name
                             event_number = int(after_event.split(":")[0].replace("Event ", ""))
                             event_name = after_event.split(": ")[1]
-                        
                         # Submit button
                         between_event_submit = st.form_submit_button("Record Between-Event Drop")
-                        
                         if between_event_submit:
                             try:
                                 # Create a new drop record
@@ -3286,7 +3263,6 @@ with tabs[5]:
                                     'Event_Number': event_number,
                                     'Is_Between_Events': True  # Add a flag to identify between-event drops
                                 }
-                                
                                 # Add to drop data
                                 if 'drop_data' not in st.session_state or st.session_state.drop_data.empty:
                                     st.session_state.drop_data = pd.DataFrame([new_drop])
@@ -3298,7 +3274,6 @@ with tabs[5]:
                                         (st.session_state.drop_data['Day'] == day) &
                                         (st.session_state.drop_data['Is_Between_Events'] == True)
                                     ]
-                                    
                                     if existing_drop.empty:
                                         # Add the new drop
                                         st.session_state.drop_data = pd.concat([
@@ -3308,7 +3283,6 @@ with tabs[5]:
                                     else:
                                         st.error("This participant has already been marked as dropped between events.")
                                         st.stop()
-                                
                                 # Update ALL subsequent event records for this team to reflect the drop
                                 if not st.session_state.event_records.empty:
                                     # Get all events for this team that occur after the current event
@@ -3377,7 +3351,6 @@ with tabs[5]:
                                         # Update difficulty scores
                                         st.session_state.event_records.loc[idx, 'Initial_Difficulty'] = initial_difficulty
                                         st.session_state.event_records.loc[idx, 'Actual_Difficulty'] = actual_difficulty
-                                
                                 st.success(f"{between_event_participant} marked as dropped between events")
                                 # Save session
                                 save_session_state()
@@ -3387,7 +3360,6 @@ with tabs[5]:
                                 st.error(f"Error recording between-event drop: {str(e)}")
                     else:
                         st.write("No participants available to mark as dropped between events.")
-                
                 # After all event expanders, add a section to show completion status for this day
                 st.write("---")
                 st.write("### Day Completion Status")
@@ -3409,7 +3381,6 @@ with tabs[5]:
                 completion_pct = len(recorded_events) / len(day_events) * 100 if day_events else 0
                 st.progress(completion_pct / 100)
                 st.write(f"**Day {day} Completion: {completion_pct:.0f}%**")
-
         # After all day tabs, show a summary of all recorded events for this team
         st.write("---")
         st.subheader(f"Summary of All Recorded Events for {team_name}")
@@ -3467,180 +3438,180 @@ with tabs[5]:
                     st.table(drop_display)
             else:
                 st.info(f"No drops recorded for {team_name}.")
-    # Display all recorded event data with team filter (outside the team selection)
-    st.write("---")
-    st.header("All Recorded Event Data for Days 3-4")
-    if not st.session_state.event_records.empty:
-        # Filter for Days 3-4 events
-        days_3_4_records = st.session_state.event_records[
-            st.session_state.event_records['Day'].isin([3, 4])
-        ]
-        if 'Team' in days_3_4_records.columns and not days_3_4_records.empty:
-            # Get unique teams
-            all_teams = days_3_4_records['Team'].unique().tolist()
-            # Create a multiselect to filter by team
-            selected_teams = st.multiselect(
-                "Filter by Teams",
-                options=all_teams,
-                default=all_teams,
-                key="days_3_4_team_filter"
-            )
-            # Filter event records by selected teams
-            if selected_teams:
-                filtered_records = days_3_4_records[
-                    days_3_4_records['Team'].isin(selected_teams)
-                ]
-                # Add day and event type filters
-                col1, col2 = st.columns(2)
-                with col1:
-                    days = st.multiselect(
-                        "Filter by Days",
-                        options=[3, 4],
-                        default=[3, 4],
-                        key="days_3_4_day_filter"
-                    )
-                with col2:
-                    events = st.multiselect(
-                        "Filter by Events",
-                        options=sorted(filtered_records['Event_Name'].unique().tolist()),
-                        default=sorted(filtered_records['Event_Name'].unique().tolist()),
-                        key="days_3_4_event_filter"
-                    )
-                # Apply additional filters
-                if days:
-                    filtered_records = filtered_records[filtered_records['Day'].isin(days)]
-                if events:
-                    filtered_records = filtered_records[filtered_records['Event_Name'].isin(events)]
-                # Display the filtered data
-                if not filtered_records.empty:
-                    # Select which columns to display
-                    display_cols = ['Team', 'Day', 'Event_Number', 'Event_Name', 'Distance_km',
-                                   'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
-                    st.dataframe(filtered_records[display_cols], use_container_width=True)
-                    # Add a download button for the filtered data
-                    csv = filtered_records.to_csv(index=False)
-                    b64 = base64.b64encode(csv.encode()).decode()
-                    href = f'<a href="data:file/csv;base64,{b64}" download="days_3_4_filtered_event_records.csv">Download Filtered Data as CSV</a>'
-                    st.markdown(href, unsafe_allow_html=True)
-                    # Show drop data for the filtered teams
-                    if not st.session_state.drop_data.empty:
-                        filtered_drops = st.session_state.drop_data[
-                            (st.session_state.drop_data['Team'].isin(selected_teams)) &
-                            (st.session_state.drop_data['Day'].isin([3, 4]))
-                        ]
-                        if days:
-                            filtered_drops = filtered_drops[filtered_drops['Day'].isin(days)]
-                        if events:
-                            filtered_drops = filtered_drops[filtered_drops['Event_Name'].isin(events)]
-                        if not filtered_drops.empty:
-                            st.subheader("Drops for Selected Teams/Events")
-                            # Group by team, day, event
-                            drop_summary = filtered_drops.groupby(['Team', 'Day', 'Event_Number', 'Event_Name']).size().reset_index(name='Drop_Count')
-                            # Display as a table
-                            drop_summary = drop_summary.sort_values(['Team', 'Day', 'Event_Number'])
-                            st.dataframe(drop_summary, use_container_width=True)
-                            # Option to view detailed drop data
-                            if st.checkbox("View detailed drop data", key="view_detailed_drops_days3-4"):
-                                st.dataframe(filtered_drops.sort_values(['Team', 'Day', 'Event_Number', 'Drop_Time']), use_container_width=True)
-                                # Add download button for drop data
-                                csv = filtered_drops.to_csv(index=False)
-                                b64 = base64.b64encode(csv.encode()).decode()
-                                href = f'<a href="data:file/csv;base64,{b64}" download="days_3_4_filtered_drop_data.csv">Download Drop Data</a>'
-                                st.markdown(href, unsafe_allow_html=True)
+        # Display all recorded event data with team filter (outside the team selection)
+        st.write("---")
+        st.header("All Recorded Event Data for Days 3-4")
+        if not st.session_state.event_records.empty:
+            # Filter for Days 3-4 events
+            days_3_4_records = st.session_state.event_records[
+                st.session_state.event_records['Day'].isin([3, 4])
+            ]
+            if 'Team' in days_3_4_records.columns and not days_3_4_records.empty:
+                # Get unique teams
+                all_teams = days_3_4_records['Team'].unique().tolist()
+                # Create a multiselect to filter by team
+                selected_teams = st.multiselect(
+                    "Filter by Teams",
+                    options=all_teams,
+                    default=all_teams,
+                    key="days_3_4_team_filter"
+                )
+                # Filter event records by selected teams
+                if selected_teams:
+                    filtered_records = days_3_4_records[
+                        days_3_4_records['Team'].isin(selected_teams)
+                    ]
+                    # Add day and event type filters
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        days = st.multiselect(
+                            "Filter by Days",
+                            options=[3, 4],
+                            default=[3, 4],
+                            key="days_3_4_day_filter"
+                        )
+                    with col2:
+                        events = st.multiselect(
+                            "Filter by Events",
+                            options=sorted(filtered_records['Event_Name'].unique().tolist()),
+                            default=sorted(filtered_records['Event_Name'].unique().tolist()),
+                            key="days_3_4_event_filter"
+                        )
+                    # Apply additional filters
+                    if days:
+                        filtered_records = filtered_records[filtered_records['Day'].isin(days)]
+                    if events:
+                        filtered_records = filtered_records[filtered_records['Event_Name'].isin(events)]
+                    # Display the filtered data
+                    if not filtered_records.empty:
+                        # Select which columns to display
+                        display_cols = ['Team', 'Day', 'Event_Number', 'Event_Name', 'Distance_km',
+                                      'Time_Actual', 'Initial_Participants', 'Drops', 'Actual_Difficulty']
+                        st.dataframe(filtered_records[display_cols], use_container_width=True)
+                        # Add a download button for the filtered data
+                        csv = filtered_records.to_csv(index=False)
+                        b64 = base64.b64encode(csv.encode()).decode()
+                        href = f'<a href="data:file/csv;base64,{b64}" download="days_3_4_filtered_event_records.csv">Download Filtered Data as CSV</a>'
+                        st.markdown(href, unsafe_allow_html=True)
+                        # Show drop data for the filtered teams
+                        if not st.session_state.drop_data.empty:
+                            filtered_drops = st.session_state.drop_data[
+                                (st.session_state.drop_data['Team'].isin(selected_teams)) &
+                                (st.session_state.drop_data['Day'].isin([3, 4]))
+                            ]
+                            if days:
+                                filtered_drops = filtered_drops[filtered_drops['Day'].isin(days)]
+                            if events:
+                                filtered_drops = filtered_drops[filtered_drops['Event_Name'].isin(events)]
+                            if not filtered_drops.empty:
+                                st.subheader("Drops for Selected Teams/Events")
+                                # Group by team, day, event
+                                drop_summary = filtered_drops.groupby(['Team', 'Day', 'Event_Number', 'Event_Name']).size().reset_index(name='Drop_Count')
+                                # Display as a table
+                                drop_summary = drop_summary.sort_values(['Team', 'Day', 'Event_Number'])
+                                st.dataframe(drop_summary, use_container_width=True)
+                                # Option to view detailed drop data
+                                if st.checkbox("View detailed drop data", key="view_detailed_drops_days3-4"):
+                                    st.dataframe(filtered_drops.sort_values(['Team', 'Day', 'Event_Number', 'Drop_Time']), use_container_width=True)
+                                    # Add download button for drop data
+                                    csv = filtered_drops.to_csv(index=False)
+                                    b64 = base64.b64encode(csv.encode()).decode()
+                                    href = f'<a href="data:file/csv;base64,{b64}" download="days_3_4_filtered_drop_data.csv">Download Drop Data</a>'
+                                    st.markdown(href, unsafe_allow_html=True)
+                    else:
+                        st.info("No records match the selected filters.")
                 else:
-                    st.info("No records match the selected filters.")
+                    st.info("Please select at least one team to view records.")
             else:
-                st.info("Please select at least one team to view records.")
+                st.info("No event records available for Days 3-4 yet.")
         else:
-            st.info("No event records available for Days 3-4 yet.")
-    else:
-        st.info("No event records available yet. Use the form above to record events.")
-    # Display combined statistics comparing Days 1-2 vs Days 3-4
-    st.write("---")
-    st.header("Comparison: Days 1-2 vs Days 3-4")
-    if not st.session_state.event_records.empty:
-        # Split data by days
-        days_1_2_data = st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])]
-        days_3_4_data = st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])]
-        if not days_1_2_data.empty and not days_3_4_data.empty:
-            # Calculate summary statistics
-            stats_days_1_2 = {
-                'Average Difficulty': days_1_2_data['Actual_Difficulty'].mean(),
-                'Max Difficulty': days_1_2_data['Actual_Difficulty'].max(),
-                'Min Difficulty': days_1_2_data['Actual_Difficulty'].min(),
-                'Total Events': len(days_1_2_data),
-                'Total Drops': days_1_2_data['Drops'].sum()
-            }
-            stats_days_3_4 = {
-                'Average Difficulty': days_3_4_data['Actual_Difficulty'].mean(),
-                'Max Difficulty': days_3_4_data['Actual_Difficulty'].max(),
-                'Min Difficulty': days_3_4_data['Actual_Difficulty'].min(),
-                'Total Events': len(days_3_4_data),
-                'Total Drops': days_3_4_data['Drops'].sum()
-            }
-            # Create a DataFrame for display
-            comparison_df = pd.DataFrame({
-                'Statistic': stats_days_1_2.keys(),
-                'Days 1-2': stats_days_1_2.values(),
-                'Days 3-4': stats_days_3_4.values(),
-                'Change': [stats_days_3_4[k] - stats_days_1_2[k] for k in stats_days_1_2.keys()]
-            })
-            # Format the numeric columns
-            for col in ['Days 1-2', 'Days 3-4', 'Change']:
-                comparison_df[col] = comparison_df[col].apply(lambda x: f"{x:.2f}" if isinstance(x, float) else f"{x}")
-            # Add a percent change column for applicable metrics
-            comparison_df['Percent Change'] = ''
-            for i, stat in enumerate(stats_days_1_2.keys()):
-                if stat in ['Average Difficulty', 'Max Difficulty', 'Min Difficulty'] and stats_days_1_2[stat] != 0:
-                    pct_change = (stats_days_3_4[stat] - stats_days_1_2[stat]) / stats_days_1_2[stat] * 100
-                    comparison_df.loc[i, 'Percent Change'] = f"{pct_change:+.1f}%"
-            # Display the comparison
-            st.dataframe(comparison_df, use_container_width=True)
-            # Create a visualization of the comparison
-            import plotly.express as px
-            # Prepare data for visualization
-            viz_data = []
-            for day in [1, 2, 3, 4]:
-                day_data = st.session_state.event_records[st.session_state.event_records['Day'] == day]
-                if not day_data.empty:
-                    viz_data.append({
-                        'Day': day,
-                        'Average Difficulty': day_data['Actual_Difficulty'].mean(),
-                        'Total Events': len(day_data),
-                        'Total Drops': day_data['Drops'].sum()
-                    })
-            if viz_data:
-                viz_df = pd.DataFrame(viz_data)
-                # Create a bar chart for average difficulty by day
-                fig = px.bar(
-                    viz_df,
-                    x='Day',
-                    y='Average Difficulty',
-                    title='Average Difficulty by Day',
-                    labels={'Average Difficulty': 'Average Difficulty Score'},
-                    color='Day',
-                    color_continuous_scale='Viridis'
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                # Create a line chart for drops by day
-                fig2 = px.line(
-                    viz_df,
-                    x='Day',
-                    y='Total Drops',
-                    title='Total Drops by Day',
-                    labels={'Total Drops': 'Number of Drops'},
-                    markers=True
-                )
-                st.plotly_chart(fig2, use_container_width=True)
-        else:
-            if days_1_2_data.empty:
-                st.warning("No data available for Days 1-2. Please record events for Days 1-2 first.")
+            st.info("No event records available yet. Use the form above to record events.")
+        # Display combined statistics comparing Days 1-2 vs Days 3-4
+        st.write("---")
+        st.header("Comparison: Days 1-2 vs Days 3-4")
+        if not st.session_state.event_records.empty:
+            # Split data by days
+            days_1_2_data = st.session_state.event_records[st.session_state.event_records['Day'].isin([1, 2])]
+            days_3_4_data = st.session_state.event_records[st.session_state.event_records['Day'].isin([3, 4])]
+            if not days_1_2_data.empty and not days_3_4_data.empty:
+                # Calculate summary statistics
+                stats_days_1_2 = {
+                    'Average Difficulty': days_1_2_data['Actual_Difficulty'].mean(),
+                    'Max Difficulty': days_1_2_data['Actual_Difficulty'].max(),
+                    'Min Difficulty': days_1_2_data['Actual_Difficulty'].min(),
+                    'Total Events': len(days_1_2_data),
+                    'Total Drops': days_1_2_data['Drops'].sum()
+                }
+                stats_days_3_4 = {
+                    'Average Difficulty': days_3_4_data['Actual_Difficulty'].mean(),
+                    'Max Difficulty': days_3_4_data['Actual_Difficulty'].max(),
+                    'Min Difficulty': days_3_4_data['Actual_Difficulty'].min(),
+                    'Total Events': len(days_3_4_data),
+                    'Total Drops': days_3_4_data['Drops'].sum()
+                }
+                # Create a DataFrame for display
+                comparison_df = pd.DataFrame({
+                    'Statistic': stats_days_1_2.keys(),
+                    'Days 1-2': stats_days_1_2.values(),
+                    'Days 3-4': stats_days_3_4.values(),
+                    'Change': [stats_days_3_4[k] - stats_days_1_2[k] for k in stats_days_1_2.keys()]
+                })
+                # Format the numeric columns
+                for col in ['Days 1-2', 'Days 3-4', 'Change']:
+                    comparison_df[col] = comparison_df[col].apply(lambda x: f"{x:.2f}" if isinstance(x, float) else f"{x}")
+                # Add a percent change column for applicable metrics
+                comparison_df['Percent Change'] = ''
+                for i, stat in enumerate(stats_days_1_2.keys()):
+                    if stat in ['Average Difficulty', 'Max Difficulty', 'Min Difficulty'] and stats_days_1_2[stat] != 0:
+                        pct_change = (stats_days_3_4[stat] - stats_days_1_2[stat]) / stats_days_1_2[stat] * 100
+                        comparison_df.loc[i, 'Percent Change'] = f"{pct_change:+.1f}%"
+                # Display the comparison
+                st.dataframe(comparison_df, use_container_width=True)
+                # Create a visualization of the comparison
+                import plotly.express as px
+                # Prepare data for visualization
+                viz_data = []
+                for day in [1, 2, 3, 4]:
+                    day_data = st.session_state.event_records[st.session_state.event_records['Day'] == day]
+                    if not day_data.empty:
+                        viz_data.append({
+                            'Day': day,
+                            'Average Difficulty': day_data['Actual_Difficulty'].mean(),
+                            'Total Events': len(day_data),
+                            'Total Drops': day_data['Drops'].sum()
+                        })
+                if viz_data:
+                    viz_df = pd.DataFrame(viz_data)
+                    # Create a bar chart for average difficulty by day
+                    fig = px.bar(
+                        viz_df,
+                        x='Day',
+                        y='Average Difficulty',
+                        title='Average Difficulty by Day',
+                        labels={'Average Difficulty': 'Average Difficulty Score'},
+                        color='Day',
+                        color_continuous_scale='Viridis'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    # Create a line chart for drops by day
+                    fig2 = px.line(
+                        viz_df,
+                        x='Day',
+                        y='Total Drops',
+                        title='Total Drops by Day',
+                        labels={'Total Drops': 'Number of Drops'},
+                        markers=True
+                    )
+                    st.plotly_chart(fig2, use_container_width=True)
             else:
-                st.warning("No data available for Days 3-4 yet. Please record events for Days 3-4.")
+                if days_1_2_data.empty:
+                    st.warning("No data available for Days 1-2. Please record events for Days 1-2 first.")
+                else:
+                    st.warning("No data available for Days 3-4 yet. Please record events for Days 3-4.")
+        else:
+            st.info("No event records available for comparison yet.")
     else:
-        st.info("No event records available for comparison yet.")
-else:
-    st.warning("Please complete team reshuffling first before recording events for Days 3-4.")
+        st.warning("Please complete team reshuffling first before recording events for Days 3-4.")
 
 # Tab 7: Final Scores
 with tabs[6]:
