@@ -968,7 +968,8 @@ with tabs[2]:
                                                                     record['Equipment_Weight'] * record['Number_of_Equipment'],
                                                                     updated_initial_participants,
                                                                     record['Distance_km'],
-                                                                    time_str_to_minutes(record['Time_Limit'])
+                                                                    time_str_to_minutes(record['Time_Limit']),
+                                                                    record['Event_Name']
                                                                 )
                                                                 # Recalculate actual difficulty
                                                                 actual_difficulty = calculate_actual_difficulty(
@@ -1145,7 +1146,8 @@ with tabs[2]:
                                                                 record['Equipment_Weight'] * record['Number_of_Equipment'],
                                                                 updated_initial_participants,
                                                                 record['Distance_km'],
-                                                                time_str_to_minutes(record['Time_Limit'])
+                                                                time_str_to_minutes(record['Time_Limit']),
+                                                                record['Event_Name']
                                                             )
                                                             # Recalculate actual difficulty
                                                             actual_difficulty = calculate_actual_difficulty(
@@ -1458,7 +1460,7 @@ with tabs[2]:
                                             # Calculate difficulty scores
                                             initial_difficulty = calculate_initial_difficulty(
                                                 temp_multiplier, total_weight, initial_participants,
-                                                distance_km, time_limit_min
+                                                distance_km, time_limit_min, event_name
                                             )
                                             
                                             # Get current drop count from drop data
@@ -1667,7 +1669,8 @@ with tabs[2]:
                                             record['Equipment_Weight'] * record['Number_of_Equipment'],
                                             updated_initial_participants,
                                             record['Distance_km'],
-                                            time_str_to_minutes(record['Time_Limit'])
+                                            time_str_to_minutes(record['Time_Limit']),
+                                            record['Event_Name']
                                         )
                                         # Recalculate actual difficulty
                                         actual_difficulty = calculate_actual_difficulty(
@@ -2727,7 +2730,7 @@ with tabs[5]:
                                             # Calculate difficulty scores
                                             initial_difficulty = calculate_initial_difficulty(
                                                 temp_multiplier, total_weight, initial_participants,
-                                                distance_km, time_limit_min
+                                                distance_km, time_limit_min, event_name
                                             )
                                             # Get current drop count from drop data
                                             drops = 0
@@ -2991,7 +2994,8 @@ with tabs[5]:
                                                                     record['Equipment_Weight'] * record['Number_of_Equipment'],
                                                                     updated_initial_participants,
                                                                     record['Distance_km'],
-                                                                    time_str_to_minutes(record['Time_Limit'])
+                                                                    time_str_to_minutes(record['Time_Limit']),
+                                                                    record['Event_Name']
                                                                 )
                                                                 # Recalculate actual difficulty
                                                                 actual_difficulty = calculate_actual_difficulty(
@@ -3332,7 +3336,8 @@ with tabs[5]:
                                             record['Equipment_Weight'] * record['Number_of_Equipment'],
                                             updated_initial_participants,
                                             record['Distance_km'],
-                                            time_str_to_minutes(record['Time_Limit'])
+                                            time_str_to_minutes(record['Time_Limit']),
+                                            record['Event_Name']
                                         )
                                         # Recalculate actual difficulty
                                         actual_difficulty = calculate_actual_difficulty(

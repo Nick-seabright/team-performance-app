@@ -2,15 +2,25 @@ import numpy as np
 import pandas as pd
 from utils.data_processing import time_str_to_minutes, minutes_to_time_str, military_time_to_minutes
 
-def calculate_initial_difficulty(temp_multiplier, total_weight, participants, distance, time_limit):
+def calculate_initial_difficulty(temp_multiplier, total_weight, participants, distance, time_limit, event_name=None):
     """
     Calculate the initial difficulty score
     Difficulty Initial = Temperature Multiplier × (Total Weight / Initial Participants) × (Distance / Time Limit)
+    
+    Special case for Sand Babies: Only half the distance is used for calculation
     """
     try:
         if participants <= 0 or time_limit <= 0:
             return 0
-        difficulty = temp_multiplier * (total_weight / participants) * (distance / time_limit)
+        
+        # Special case for Sand Babies event
+        if event_name and "SAND BABIES" in event_name.upper():
+            # Only half the distance is used for calculation
+            effective_distance = distance * 0.5
+        else:
+            effective_distance = distance
+            
+        difficulty = temp_multiplier * (total_weight / participants) * (effective_distance / time_limit)
         return difficulty
     except Exception as e:
         print(f"Error calculating initial difficulty: {str(e)}")
@@ -22,6 +32,9 @@ def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participa
                               start_time=None):
     """
     Calculate the actual difficulty score, accounting for participants who dropped
+    
+    Special case for Sand Babies: Only half the distance is used for calculation
+    
     Parameters:
     -----------
     temp_multiplier : float
@@ -54,10 +67,19 @@ def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participa
     try:
         if initial_participants <= 0 or time_actual_min <= 0:
             return 0
+        
+        # Special case for Sand Babies event
+        if "SAND BABIES" in event_name.upper():
+            # Only half the distance is used for calculation
+            effective_distance = distance * 0.5
+        else:
+            effective_distance = distance
+            
         # If no drops, the calculation is simple
         if drops == 0:
-            difficulty = temp_multiplier * (total_weight / initial_participants) * (distance / time_actual_min)
+            difficulty = temp_multiplier * (total_weight / initial_participants) * (effective_distance / time_actual_min)
             return difficulty
+        
         # Filter drop data for this event
         if 'Team' in drop_data.columns:
             # Filter by team and event
@@ -73,10 +95,11 @@ def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participa
                 (drop_data['Event_Number'] == event_number) &
                 (drop_data['Event_Name'] == event_name)
             ]
+            
         # If no drop data available for this event, use the provided drops count
         if event_drops.empty:
             effective_participants = initial_participants - (drops / 2)  # Approximate
-            difficulty = temp_multiplier * (total_weight / effective_participants) * (distance / time_actual_min)
+            difficulty = temp_multiplier * (total_weight / effective_participants) * (effective_distance / time_actual_min)
             return difficulty
         
         # For each drop, calculate the effective participants
@@ -97,8 +120,6 @@ def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participa
         segments = [0] + drop_times_relative + [time_actual_min]
         participant_counts = list(range(initial_participants, initial_participants - len(drop_times_relative) - 1, -1))
         
-        # Note: Removed mismatched else clause here
-        
         weighted_participants = 0
         for i in range(len(segments) - 1):
             segment_duration = segments[i+1] - segments[i]
@@ -106,7 +127,7 @@ def calculate_actual_difficulty(temp_multiplier, total_weight, initial_participa
         effective_participants = weighted_participants / time_actual_min
         
         # Calculate difficulty with effective participants
-        difficulty = temp_multiplier * (total_weight / effective_participants) * (distance / time_actual_min)
+        difficulty = temp_multiplier * (total_weight / effective_participants) * (effective_distance / time_actual_min)
         return difficulty
     except Exception as e:
         print(f"Error calculating actual difficulty: {str(e)}")
